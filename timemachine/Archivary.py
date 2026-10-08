@@ -16,7 +16,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
 import abc
-import codecs
 import csv
 import datetime
 import difflib
@@ -37,7 +36,6 @@ from tenacity import retry
 from tenacity.stop import stop_after_delay
 from typing import Callable, Optional
 
-import pkg_resources
 from timemachine import config
 from timemachine import utils
 
@@ -1159,10 +1157,10 @@ class PhishinTrack(BaseTrack):
             logger.debug("adding break track in Phishin")
             d["name"] = ""
             if self.set == "E":
-                d["path"] = pkg_resources.resource_filename("timemachine.metadata", "silence0.ogg")
+                d["path"] = utils.resource_path("timemachine.metadata", "silence0.ogg")
                 self.title = "Encore Break"
             else:
-                d["path"] = pkg_resources.resource_filename("timemachine.metadata", "silence600.ogg")
+                d["path"] = utils.resource_path("timemachine.metadata", "silence600.ogg")
                 logger.debug(f"path is {d['path']}")
                 self.title = "Set Break"
             d["format"] = "Ogg Vorbis"
@@ -1487,10 +1485,10 @@ class LocalTrack(BaseTrack):
             logger.debug("adding break track")
             d["name"] = ""
             if self.set == "E":
-                d["path"] = pkg_resources.resource_filename("timemachine.metadata", "silence0.ogg")
+                d["path"] = utils.resource_path("timemachine.metadata", "silence0.ogg")
                 self.title = "Encore Break"
             else:
-                d["path"] = pkg_resources.resource_filename("timemachine.metadata", "silence600.ogg")
+                d["path"] = utils.resource_path("timemachine.metadata", "silence600.ogg")
                 logger.debug(f"path is {d['path']}")
                 self.title = "Set Break"
             d["format"] = "Ogg Vorbis"
@@ -2115,7 +2113,7 @@ class GDTape(BaseTape):
             return
         if not breaks:
             breaks = self._compute_breaks()
-        longbreak_path = pkg_resources.resource_filename("timemachine.metadata", "silence600.ogg")
+        longbreak_path = utils.resource_path("timemachine.metadata", "silence600.ogg")
         breakd = {
             "track": -1,
             "original": "setbreak",
@@ -2276,9 +2274,8 @@ class GDSetBreaks:
         # if 'GratefulDead' not in self.collection_list:
         #    self.set_data = set_data
         #    return
-        set_breaks = pkg_resources.resource_stream("timemachine.metadata", "set_breaks.csv")
-        utf8_reader = codecs.getreader("utf-8")
-        r = [r for r in csv.reader(utf8_reader(set_breaks))]
+        with open(utils.resource_path("timemachine.metadata", "set_breaks.csv"), "r", encoding="utf-8", newline="") as set_breaks:
+            r = [r for r in csv.reader(set_breaks)]
         headers = r[0]
         for row in r[1:]:
             d = dict(zip(headers, row))

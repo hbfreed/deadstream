@@ -21,8 +21,6 @@ import psutil
 import re
 import subprocess
 
-import pkg_resources
-
 from timemachine import config
 
 logging.basicConfig(
@@ -35,6 +33,20 @@ logging.addLevelName(VERBOSE, "VERBOSE")
 logger = logging.getLogger(__name__)
 
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+def resource_path(package, name):
+    """Filesystem path of a file shipped inside a timemachine package.
+
+    pkg_resources was removed from setuptools 81, so prefer importlib.resources (python 3.9+).
+    """
+    try:
+        from importlib.resources import files
+    except ImportError:
+        import pkg_resources
+
+        return pkg_resources.resource_filename(package, name)
+    return str(files(package).joinpath(name))
 
 OS_VERSION = None
 
@@ -77,7 +89,7 @@ def get_os_name():
 def get_version():
     __version__ = "v1.0"
     try:
-        latest_tag_path = pkg_resources.resource_filename("timemachine", ".latest_tag")
+        latest_tag_path = resource_path("timemachine", ".latest_tag")
         with open(latest_tag_path, "r") as tag:
             __version__ = tag.readline()
         __version__ = __version__.strip()
