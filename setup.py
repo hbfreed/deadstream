@@ -1,7 +1,6 @@
 from setuptools import setup
-from distutils.util import convert_path
 
-version_path = convert_path("timemachine/.latest_tag")
+version_path = "timemachine/.latest_tag"
 version_number = open(version_path, "r").readline().strip()
 print(f"version_number is {version_number}")
 
