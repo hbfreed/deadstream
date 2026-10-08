@@ -283,14 +283,27 @@ class Archivary:
             return None
         return tst[0]
 
+    def collection_of(self, tape):
+        """The one entry of collection_list that a tape belongs to, or None"""
+        if isinstance(tape.collection, str):  # LocalTape collection is the folder name, eg "GratefulDead"
+            key = f"Local_{tape.collection}"
+            return key if key in self.collection_list else None
+        for c in self.collection_list:
+            if c in tape.collection:
+                return c
+        return None
+
     def sort_across_collection(self, tapes):
         cdict = {}
         for c in self.collection_list:
             cdict[c] = []
+        unmatched = []
         for t in tapes:
-            for c in self.collection_list:
-                if c.replace("Local_", "") in t.collection:
-                    cdict[c].append(t)
+            c = self.collection_of(t)
+            if c is None:
+                unmatched.append(t)
+            else:
+                cdict[c].append(t)
 
         result = []
         max_n_collection = max([len(cdict[k]) for k in cdict])
@@ -298,7 +311,7 @@ class Archivary:
             for k in cdict.keys():
                 if len(cdict[k]) > i:
                     result.append(cdict[k][i])
-        return result
+        return result + unmatched
 
     def get_tape_dates(self, sort_across=True):  # Archivary
         _ = [a.get_tape_dates() for a in self.archives]
