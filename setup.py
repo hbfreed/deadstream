@@ -38,7 +38,7 @@ setup(
         "pre-commit",
         "pulsectl",
         "plexapi",
-        "python-mpv==0.5.2",
+        "python-mpv>=1.0",
         "requests",
         "RPi.GPIO",
         "tenacity",
