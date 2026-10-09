@@ -149,8 +149,15 @@ Time Machine. When a phone starts playing, the Time Machine pauses and shows the
 knob turn, or Play, Select or Stop, ends the AirPlay session and gives the speakers back. The config
 files are in `docs/airplay/`.
 
+Debian's shairport-sync is classic AirPlay only, which holds about 2 seconds of audio: a phone on weak Wi-Fi
+drops out. AirPlay 2 (from Music, Podcasts, ...) sends audio well ahead, so build Shairport Sync 5 with AirPlay 2
+and its timing helper NQPTP on the Pi (about 20 minutes on a 3A+; `docs/airplay/build_ap2.sh`):
+
 ```bash
-sudo apt install -y --no-install-recommends shairport-sync
+bash docs/airplay/build_ap2.sh          # apt build deps, then builds ~/src/nqptp and ~/src/shairport-sync
+cd ~/src/nqptp && sudo make install && sudo systemctl enable --now nqptp
+cd ~/src/shairport-sync && sudo make install   # /usr/local/bin/shairport-sync and its systemd unit
+cd ~/deadstream
 sudo cp docs/airplay/shairport-sync.conf /etc/shairport-sync.conf
 # lets shairport-sync take its D-Bus name, and the Time Machine end a session (DropSession)
 sudo cp docs/airplay/shairport-sync-timemachine.conf /etc/dbus-1/system.d/
@@ -159,11 +166,11 @@ sudo mkdir -p /etc/systemd/system/shairport-sync.service.d /etc/systemd/system/p
 sudo cp docs/airplay/shairport-sync.service.d-timemachine.conf /etc/systemd/system/shairport-sync.service.d/timemachine.conf
 sudo cp docs/airplay/pulseaudio.service.d-airplay.conf /etc/systemd/system/pulseaudio.service.d/airplay.conf
 sudo usermod -a -G pulse-access shairport-sync
-sudo systemctl daemon-reload && sudo systemctl reload dbus && sudo systemctl restart shairport-sync
+sudo systemctl daemon-reload && sudo systemctl reload dbus && sudo systemctl enable --now shairport-sync
 ```
 
 The Time Machine notices shairport-sync by `/etc/shairport-sync.conf` and reads its metadata pipe
-(`/tmp/shairport-sync-metadata`). shairport-sync uses about 17 MB of memory.
+(`/tmp/shairport-sync-metadata`).
 
 ## 10. Official releases (optional)
 
