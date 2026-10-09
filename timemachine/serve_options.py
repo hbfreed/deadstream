@@ -39,6 +39,8 @@ parser.add_option(
     default=False,
     help="Print more verbose information [default %default]",
 )
+parser.add_option("--host", dest="host", default=None, help="address to listen on [default: this machine's IP]")
+parser.add_option("--port", dest="port", type="int", default=9090, help="port to listen on [default %default]")
 parms, remainder = parser.parse_args()
 
 logging.basicConfig(
@@ -773,8 +775,8 @@ if opt_dict["PULSEAUDIO_ENABLE"] == "true":
 
 
 def main():
-    ip_address = get_ip()
-    cherrypy.config.update({"server.socket_host": ip_address, "server.socket_port": 9090})
+    ip_address = parms.host or get_ip()
+    cherrypy.config.update({"server.socket_host": ip_address, "server.socket_port": parms.port})
     cherrypy.quickstart(OptionsServer())
 
 

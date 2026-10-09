@@ -132,6 +132,20 @@ sudo reboot
 With `update.service` masked, the three "Update code" triggers (holding Stop, the month-button
 menu, and the web page) fail harmlessly. The screen shows "Code is up to Date".
 
+The options page (serve_options, port 9090) uses about 38 MB, all the time, for a page used now and then.
+Start it on demand instead: systemd listens on 9090, starts serve_options on a visit (the first page load
+takes about 2 seconds), and stops it after 10 idle minutes.
+
+```bash
+D=docs/options-on-demand
+sudo cp $D/serve_options-proxy.socket $D/serve_options-proxy.service /etc/systemd/system/
+sudo mkdir -p /etc/systemd/system/serve_options.service.d
+sudo cp $D/serve_options.service.d-ondemand.conf /etc/systemd/system/serve_options.service.d/ondemand.conf
+sudo systemctl daemon-reload
+sudo systemctl disable --now serve_options
+sudo systemctl enable --now serve_options-proxy.socket
+```
+
 ## 8. Check
 
 - The screen lights up and the knobs move the date.

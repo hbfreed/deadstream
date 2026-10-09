@@ -1,0 +1,7 @@
+[Unit]
+Description=Forward the options page to serve_options while it is in use
+Requires=serve_options.service
+After=serve_options.service
+
+[Service]
+ExecStart=/usr/lib/systemd/systemd-socket-proxyd --exit-idle-time=10min 127.0.0.1:9091
