@@ -707,7 +707,7 @@ def show_venue_text(arg, color=(0, 255, 255), show_id=False, offset=0, force=Fal
         num_events = 1
     TMB.scr.clear_area(TMB.scr.venue_bbox)
     TMB.scr.show_text(venue_name, TMB.scr.venue_bbox.origin(), font=TMB.scr.boldsmall, color=color, force=force)
-    if len(config.optd["COLLECTIONS"]) > 1:
+    if len({c.replace("Local_", "") for c in config.optd["COLLECTIONS"]}) > 1:  # more than one artist
         TMB.scr.clear_area(TMB.scr.track1_bbox)
         TMB.scr.show_text(artist_name, TMB.scr.track1_bbox.origin(), font=TMB.scr.boldsmall, color=color, force=True)
     if num_events > 1:
