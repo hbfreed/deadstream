@@ -154,9 +154,10 @@ sudo apt install -y --no-install-recommends shairport-sync
 sudo cp docs/airplay/shairport-sync.conf /etc/shairport-sync.conf
 # lets shairport-sync take its D-Bus name, and the Time Machine end a session (DropSession)
 sudo cp docs/airplay/shairport-sync-timemachine.conf /etc/dbus-1/system.d/
-# the Time Machine restarts PulseAudio; shairport-sync has to restart with it to reconnect
-sudo mkdir -p /etc/systemd/system/shairport-sync.service.d
+# the Time Machine restarts PulseAudio; shairport-sync has to stop and start with it to reconnect
+sudo mkdir -p /etc/systemd/system/shairport-sync.service.d /etc/systemd/system/pulseaudio.service.d
 sudo cp docs/airplay/shairport-sync.service.d-timemachine.conf /etc/systemd/system/shairport-sync.service.d/timemachine.conf
+sudo cp docs/airplay/pulseaudio.service.d-airplay.conf /etc/systemd/system/pulseaudio.service.d/airplay.conf
 sudo usermod -a -G pulse-access shairport-sync
 sudo systemctl daemon-reload && sudo systemctl reload dbus && sudo systemctl restart shairport-sync
 ```

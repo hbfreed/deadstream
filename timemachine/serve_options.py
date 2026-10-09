@@ -555,10 +555,20 @@ class OptionsServer(object):
         with open(config.OPTIONS_PATH, "w") as outfile:
             json.dump(options, outfile, indent=1)
 
-    def set_pulse_values(self, pulse, desired_sink):
+    def set_pulse_values(self, desired_sink):
+        global pulse
         if pulse is None:
             return
-        current_sink_name = pulse.server_info().default_sink_name
+        try:
+            current_sink_name = pulse.server_info().default_sink_name
+        except pulsectl.PulseError:  # PulseAudio restarted since we connected (the Time Machine restarts it)
+            pulse.close()
+            try:
+                pulse = pulsectl.Pulse("pulsectl")
+                current_sink_name = pulse.server_info().default_sink_name
+            except pulsectl.PulseError:
+                logger.exception("Failed to reconnect to PulseAudio. Not setting the audio sink")
+                return
         current_sink_desc = [x.description for x in pulse.sink_list() if x.name == current_sink_name][0]
         if desired_sink != current_sink_desc:
             logger.warning(
@@ -621,7 +631,7 @@ class OptionsServer(object):
             logger.warning("audio-sink not in kwargs")
             desired_sink = "headphone jack"
 
-        self.set_pulse_values(pulse, desired_sink)
+        self.set_pulse_values(desired_sink)
 
         form_strings = [f"<label>{x[0]}:{x[1]}</label> <p>" for x in kwargs.items()]
         form_string = "\n".join(form_strings)
