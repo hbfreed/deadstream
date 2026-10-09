@@ -111,7 +111,9 @@ def test_gdarchive_date_range(tmp_path):
 
 def test_archivary_single_and_merged(tmp_path):
     gd = make_gd_archive(tmp_path)
-    local_tape = SimpleNamespace(collection="GratefulDead", identifier="local-73-12-19", artist="GratefulDead")
+    local_tape = SimpleNamespace(
+        collection="GratefulDead", identifier="local-73-12-19", artist="GratefulDead", source_tier=lambda: 0
+    )
     local = SimpleNamespace(
         tape_dates={"1973-12-19": [local_tape], "1980-01-01": [local_tape]},
         dates=["1973-12-19", "1980-01-01"],

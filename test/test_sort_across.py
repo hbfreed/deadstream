@@ -3,6 +3,10 @@ from types import SimpleNamespace
 from timemachine import Archivary
 
 
+def tape(collection, name, tier=1):
+    return SimpleNamespace(collection=collection, name=name, source_tier=lambda: tier)
+
+
 def make_archivary(collection_list):
     a = Archivary.Archivary.__new__(Archivary.Archivary)
     a.collection_list = collection_list
@@ -10,9 +14,9 @@ def make_archivary(collection_list):
 
 
 # GDTape.collection is a list of archive.org collections; LocalTape.collection is the folder name.
-ia1 = SimpleNamespace(collection=["GratefulDead", "etree"], name="ia1")
-ia2 = SimpleNamespace(collection=["GratefulDead", "etree"], name="ia2")
-loc = SimpleNamespace(collection="GratefulDead", name="loc")
+ia1 = tape(["GratefulDead", "etree"], "ia1")
+ia2 = tape(["GratefulDead", "etree"], "ia2")
+loc = tape("GratefulDead", "loc")
 
 
 def names(tapes):
@@ -31,19 +35,19 @@ def test_collection_order_respected():
 
 def test_local_name_substring_of_ia_name():
     a = make_archivary(["GooseBand", "Local_Goose"])
-    ia = SimpleNamespace(collection=["GooseBand"], name="ia")
-    local = SimpleNamespace(collection="Goose", name="local")
+    ia = tape(["GooseBand"], "ia")
+    local = tape("Goose", "local")
     assert names(a.sort_across_collection([ia, local])) == ["ia", "local"]
 
 
 def test_unmatched_tapes_kept_at_end():
     a = make_archivary(["GratefulDead"])
-    stray = SimpleNamespace(collection=["SomethingElse"], name="stray")
+    stray = tape(["SomethingElse"], "stray")
     assert names(a.sort_across_collection([stray, ia1])) == ["ia1", "stray"]
 
 
 def test_plex_and_phish():
     a = make_archivary(["Phish", "Plex_home_Live Music"])
-    phish = SimpleNamespace(collection=["Phish"], name="phish")
-    plex = SimpleNamespace(collection=["Plex_home_Live Music"], name="plex")
+    phish = tape(["Phish"], "phish")
+    plex = tape(["Plex_home_Live Music"], "plex")
     assert names(a.sort_across_collection([phish, plex])) == ["phish", "plex"]

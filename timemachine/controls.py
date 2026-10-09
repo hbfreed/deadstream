@@ -16,6 +16,7 @@
 """
 import datetime
 import logging
+import math
 import os
 import string
 import subprocess
@@ -792,6 +793,7 @@ class screen:
         self.sbd_bbox = Bbox(155, 100, self.disp.height, 108)
         self.exp_bbox = Bbox(y_offset, 55, self.disp.height, 100)
 
+        self.official = None  # "complete"/"partial" while an official release is selected
         self.update_now = True
         self.sleeping = False
 
@@ -994,8 +996,25 @@ class screen:
             pass
         if sbd:
             self.show_soundboard(sbd)
+        self.show_official()
         if force or self.update_now:
             self.refresh(True)
+
+    def show_official(self, color=(255, 200, 0)):
+        """A star in the corner of the play state: filled for an official release, hollow if it is a partial show"""
+        if self.official is None:
+            return
+        cx, cy = self.sbd_bbox.center()
+        cx, cy, outer, inner = cx - 1, cy + 1, 5, 2
+        points = []
+        for k in range(10):
+            r = outer if k % 2 == 0 else inner
+            angle = math.pi / 2 + k * math.pi / 5
+            points.append((cx + r * math.cos(angle), cy - r * math.sin(angle)))
+        if self.official == "partial":
+            self.draw.polygon(points, outline=color, fill=(0, 0, 0))
+        else:
+            self.draw.polygon(points, fill=color)
 
     def show_soundboard(self, sbd, color=(255, 255, 255)):
         if not sbd:

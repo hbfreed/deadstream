@@ -371,6 +371,14 @@ class Archivary:
         return None
 
     def sort_across_collection(self, tapes):
+        """Order the tapes of a date: by source tier (see BaseTape.source_tier), then alternating between
+        collections, keeping each collection's own order"""
+        tiers = sorted(set(t.source_tier() for t in tapes))
+        if len(tiers) > 1:
+            return [x for tier in tiers for x in self._round_robin([t for t in tapes if t.source_tier() == tier])]
+        return self._round_robin(tapes)
+
+    def _round_robin(self, tapes):
         cdict = {}
         for c in self.collection_list:
             cdict[c] = []
@@ -632,6 +640,14 @@ class BaseTape(abc.ABC):
     @abc.abstractmethod
     def venue(self, tracknum=0):
         pass
+
+    def official(self):
+        """None, or "complete"/"partial" for an official release (shown as a marker on the screen)"""
+        return None
+
+    def source_tier(self):
+        """Where the tape sorts among the tapes of a date: 0 first, 1 archive.org and other sources, 2 last"""
+        return 1
 
 
 class BaseTrack:
@@ -1334,7 +1350,35 @@ class LocalTape(BaseTape):
     def stream_only(self):
         return False
 
+    @property
+    def release(self):
+        """The official release this tape comes from, as written by tools/map_releases.py, or None"""
+        if not hasattr(self, "_release"):
+            self._release = None
+            try:
+                with open(self.meta_path, "r") as f:
+                    self._release = json.load(f).get("release")
+            except (OSError, ValueError):
+                pass
+        return self._release
+
+    def official(self):
+        if self.release is None:
+            return None
+        if self.release.get("role") == "show" and self.release.get("complete") is False:
+            return "partial"
+        return "complete"
+
+    def source_tier(self):
+        # Local tapes come first, except an official release holding only a little of the show (eg filler on a
+        # bonus disc), which comes after the archive.org tapes.
+        if self.release is not None and not self.release.get("primary", True):
+            return 2
+        return 0
+
     def compute_score(self):
+        if self.release is not None:  # the night's tracks before the whole release
+            return 1 if self.release.get("role") == "show" else 0
         folder_match = re.match(r".*/tape(\d*)$", self.identifier)
         if folder_match:
             return float(folder_match.group(1))

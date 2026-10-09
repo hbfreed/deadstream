@@ -224,6 +224,7 @@ def select_tape(tape, state, autoplay=True):
     current["VENUE"] = tape.venue()
     current["ARTIST"] = tape.artist
     venue_counter = (0, 0)
+    TMB.scr.official = tape.official()
 
     try:
         state.player.insert_tape(tape)
@@ -315,7 +316,7 @@ def select_button_longpress(button, state):
     tape_id = tapes[itape].identifier
     sbd = tapes[itape].stream_only()
     id_color = (0, 255, 255) if sbd else (0, 0, 255)
-    TMB.scr.show_venue(tape_id, color=id_color)
+    TMB.scr.show_venue(os.path.basename(tape_id), color=id_color)
     tape = tapes[itape]
     state = select_tape(tape, state, autoplay=AUTO_PLAY)
     TMB.select_event.set()
@@ -367,6 +368,7 @@ def play_pause_button_longpress(button, state):
     current["VENUE"] = tape.venue()
     current["ARTIST"] = tape.artist
     venue_counter = (0, 0)
+    TMB.scr.official = tape.official()
     current_volume = state.player.get_prop("volume")
     state.player._set_property("volume", max(current_volume, 100))
     current["VOLUME"] = state.player.get_prop("volume")
@@ -699,7 +701,7 @@ def show_venue_text(arg, color=(0, 255, 255), show_id=False, offset=0, force=Fal
             artist_name = tapes[date_reader.shownum].artist
     elif isinstance(arg, Archivary.BaseTape):
         tape = arg
-        venue_name = tape.identifier if show_id else tape.venue()
+        venue_name = os.path.basename(tape.identifier) if show_id else tape.venue()  # local tapes: the folder name
         venue_name = venue_name[offset:]
         artist_name = tape.artist
         num_events = 1
