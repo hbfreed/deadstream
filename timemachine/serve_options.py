@@ -211,7 +211,10 @@ class OptionsServer(object):
         bluetooth_button = ""
         if get_os_version() != 10:
             if self.current_choice(opt_dict, "BLUETOOTH_ENABLE", "true"):
-                initialize_bluetooth(scan=False)
+                try:
+                    initialize_bluetooth(scan=False)
+                except Exception:
+                    logger.exception("Failed to initialize bluetooth")
                 bluetooth_button = """
                    <form method="get" action="bluetooth_settings">
                      <button type="submit">Bluetooth Settings</button>
@@ -749,7 +752,10 @@ logger.debug(f"opt_dict is now {opt_dict}")
 if opt_dict["PULSEAUDIO_ENABLE"] == "true":
     enable_pulse()
     if (get_os_version() > 10) and opt_dict["BLUETOOTH_ENABLE"] == "true":
-        initialize_bluetooth(scan=False)
+        try:
+            initialize_bluetooth(scan=False)
+        except Exception:
+            logger.exception("Failed to initialize bluetooth. Serving options without it")
 
 
 def main():

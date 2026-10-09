@@ -9,7 +9,8 @@ from timemachine import utils
 
 logger = logging.getLogger(__name__)
 try:
-    from timemachine.GD import ROOT_DIR
+    # not imported from timemachine.GD, which would load libmpv into every process that reads the config
+    ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
     DB_PATH = os.path.join(ROOT_DIR, "metadata")
     os_version = utils.get_os_version()
 except Exception as e:
