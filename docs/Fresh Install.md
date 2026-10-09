@@ -141,3 +141,25 @@ menu, and the web page) fail harmlessly. The screen shows "Code is up to Date".
 
 Memory reference: with the full Grateful Dead index loaded, the main process uses about 185 MB on
 64-bit (measured on x86-64, where Python's memory use is about the same as on aarch64).
+
+## 9. AirPlay (optional)
+
+The box can also be an AirPlay speaker. shairport-sync plays into the same PulseAudio server as the
+Time Machine. When a phone starts playing, the Time Machine pauses and shows the AirPlay track and artist. Any
+knob turn, or Play, Select or Stop, ends the AirPlay session and gives the speakers back. The config
+files are in `docs/airplay/`.
+
+```bash
+sudo apt install -y --no-install-recommends shairport-sync
+sudo cp docs/airplay/shairport-sync.conf /etc/shairport-sync.conf
+# lets shairport-sync take its D-Bus name, and the Time Machine end a session (DropSession)
+sudo cp docs/airplay/shairport-sync-timemachine.conf /etc/dbus-1/system.d/
+# the Time Machine restarts PulseAudio; shairport-sync has to restart with it to reconnect
+sudo mkdir -p /etc/systemd/system/shairport-sync.service.d
+sudo cp docs/airplay/shairport-sync.service.d-timemachine.conf /etc/systemd/system/shairport-sync.service.d/timemachine.conf
+sudo usermod -a -G pulse-access shairport-sync
+sudo systemctl daemon-reload && sudo systemctl reload dbus && sudo systemctl restart shairport-sync
+```
+
+The Time Machine notices shairport-sync by `/etc/shairport-sync.conf` and reads its metadata pipe
+(`/tmp/shairport-sync-metadata`). shairport-sync uses about 17 MB of memory.

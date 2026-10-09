@@ -34,7 +34,7 @@ from tenacity import retry
 from tenacity.stop import stop_after_delay
 from typing import Callable
 
-from timemachine import Archivary, config, controls, GD
+from timemachine import airplay, Archivary, config, controls, GD
 
 knob_sense_path = os.path.join(os.getenv("HOME"), ".knob_sense")
 
@@ -55,6 +55,7 @@ controlsLogger.setLevel(logging.WARN)
 stagedate_event = Event()
 track_event = Event()
 playstate_event = Event()
+airplay_event = Event()
 free_event = Event()
 stop_update_event = Event()
 stop_loop_event = Event()
@@ -194,6 +195,7 @@ def twist_knob(knob: RotaryEncoder, label, date_reader: controls.date_knob_reade
             TMB.y_knob_event.set()
         TMB.knob_event.set()
         return
+    take_over_from_airplay()
     TMB.twist_knob(knob, label, date_reader)
     TMB.knob_event.set()
     stagedate_event.set()
@@ -273,6 +275,7 @@ def select_button(button, state):
     if button.is_pressed or button.is_held:
         return
     logger.debug("pressing select")
+    take_over_from_airplay()
     current = state.get_current()
     if current["PLAY_STATE"] == config.ENDED:
         logger.debug("setting PLAY_STATE to READY")
@@ -324,6 +327,7 @@ def select_button_longpress(button, state):
 
 @sequential
 def play_pause_button(button, state):
+    take_over_from_airplay()
     current = state.get_current()
     logger.debug("pressing play_pause")
     if current["PLAY_STATE"] in [config.INIT]:
@@ -387,6 +391,7 @@ def play_pause_button_longpress(button, state):
 
 @sequential
 def stop_button(button, state):
+    take_over_from_airplay()
     current = state.get_current()
     if current["PLAY_STATE"] in [config.READY, config.INIT, config.STOPPED]:
         return
@@ -714,6 +719,34 @@ def show_venue_text(arg, color=(0, 255, 255), show_id=False, offset=0, force=Fal
         TMB.scr.show_nevents(str(num_events), force=force)
 
 
+def show_airplay(ap):
+    TMB.scr.clear_area(controls.Bbox(0, 0, 160, 100))
+    TMB.scr.show_text("AirPlay", TMB.scr.staged_date_bbox.origin(), font=TMB.scr.font, color=(255, 255, 255))
+    TMB.scr.show_venue(ap.artist or "", color=(0, 255, 255))
+    TMB.scr.show_track(ap.title or "", 0, raw_text=True)
+    TMB.scr.show_track(ap.album or "", 1, raw_text=True)
+
+
+def airplay_started():
+    """A phone started playing to the speakers: pause the Time Machine"""
+    current = state.get_current()
+    if current["PLAY_STATE"] == config.PLAYING:
+        logger.info("AirPlay started: pausing the Time Machine")
+        state.player.pause()
+        current["PAUSED_AT"] = datetime.datetime.now()
+        current["PLAY_STATE"] = config.PAUSED
+        state.set(current)
+        playstate_event.set()
+    airplay_event.set()
+
+
+def take_over_from_airplay():
+    """A knob or button press gives the speakers back to the Time Machine"""
+    if AIRPLAY is not None and AIRPLAY.active:
+        logger.info("Time Machine control: ending the AirPlay session")
+        AIRPLAY.drop_session()
+
+
 def event_loop(state, lock):
     global venue_counter
     key_error_count = 0
@@ -746,6 +779,23 @@ def event_loop(state, lock):
             idle_seconds = (now - last_sdevent).seconds
             idle_second_hand = divmod(idle_seconds, max_second_hand)[1]
             current = retry_call(get_current, state)  # if this fails, try again
+
+            if airplay_event.is_set():
+                airplay_event.clear()
+                if AIRPLAY is not None and AIRPLAY.active:
+                    show_airplay(AIRPLAY)
+                else:  # back to the Time Machine
+                    TMB.scr.clear_area(controls.Bbox(0, 0, 160, 100))
+                    stagedate_event.set()
+                    TMB.select_event.set()
+                    playstate_event.set()
+                TMB.scr.wake_up()
+                TMB.screen_event.set()
+            if AIRPLAY is not None and AIRPLAY.active:
+                stagedate_event.clear()
+                track_event.clear()
+                TMB.select_event.clear()
+                q_counter = False
 
             if TMB.screen_event.is_set():
                 TMB.scr.refresh()
@@ -1119,6 +1169,13 @@ TMB.scr.show_text("Powered by\n archive.org\n & phish.in", color=(0, 255, 255), 
 TMB.scr.show_text(
     str(len(archive.collection_list)).rjust(3), font=TMB.scr.boldsmall, loc=(120, 100), color=(255, 100, 0), force=True
 )
+
+AIRPLAY = None
+if airplay.available():
+    AIRPLAY = airplay.AirPlay(
+        on_start=airplay_started, on_stop=airplay_event.set, on_track=lambda title, artist, album: airplay_event.set()
+    )
+    AIRPLAY.start()
 
 # save_pid()
 lock = Lock()
