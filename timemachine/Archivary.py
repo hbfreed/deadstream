@@ -415,17 +415,26 @@ class Archivary:
         after them. Filler (see BaseTape.filler) comes last. Different artists on the same date alternate.
         """
         rank = {c: i for i, c in enumerate(self.collection_list)}
-        groups, unmatched = {}, []  # artist -> tapes
+        artists = {collection_artist(c).lower(): collection_artist(c) for c in self.collection_list}
+        groups, unmatched, tape_rank = {}, [], {}  # artist -> tapes
         for t in tapes:
             c = self.collection_of(t)
             if c is None:
                 unmatched.append(t)
-            else:
-                groups.setdefault(collection_artist(c), []).append(t)
+                continue
+            artist, r = collection_artist(c), rank[c]
+            # archive.org files some bands under another's collection (Orebolo shows in GooseBand): the identifier
+            # names the band (orebolo2022-09-07...). Such a tape counts as that band's, ranked as its archive.org source.
+            m = re.match(r"([a-z]+)\d", str(getattr(t, "identifier", "")).lower())
+            if m and m.group(1) in artists and artists[m.group(1)] != artist:
+                artist = artists[m.group(1)]
+                r = rank.get(artist, len(rank))
+            tape_rank[id(t)] = r
+            groups.setdefault(artist, []).append(t)
         ordered = []
         for artist, ts in groups.items():
-            ts = sorted(ts, key=lambda t: (t.filler(), rank[self.collection_of(t)]))  # stable: keeps each source's order
-            ordered.append((min(rank[self.collection_of(t)] for t in ts), ts))
+            ts = sorted(ts, key=lambda t: (t.filler(), tape_rank[id(t)]))  # stable: keeps each source's order
+            ordered.append((min(tape_rank[id(t)] for t in ts), ts))
         ordered = [ts for _, ts in sorted(ordered, key=lambda x: x[0])]
         result = []
         for i in range(max([len(ts) for ts in ordered], default=0)):

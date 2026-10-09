@@ -65,3 +65,15 @@ def test_collection_artist():
     assert Archivary.collection_artist("Nugs_GooseBand") == "GooseBand"
     assert Archivary.collection_artist("GooseBand") == "GooseBand"
     assert Archivary.collection_artist("Plex_home_Live Music") == "Plex_home_Live Music"
+
+
+def test_tape_filed_under_another_band():
+    """archive.org files Orebolo shows in the GooseBand collection; the identifier names the band"""
+    a = Archivary.Archivary.__new__(Archivary.Archivary)
+    a.collection_list = ["GooseBand", "Local_Orebolo", "Nugs_Orebolo"]
+    ia_orebolo = SimpleNamespace(collection=["GooseBand"], identifier="orebolo2022-09-07.akg451.flac16", name="ia-orebolo", filler=lambda: False)
+    ia_goose = SimpleNamespace(collection=["GooseBand"], identifier="goose2022-09-07.sbd", name="ia-goose", filler=lambda: False)
+    local = SimpleNamespace(collection="Orebolo", identifier="/archive/Orebolo/shows/2022-09-07-Levitt", name="local", filler=lambda: False)
+    nugs = SimpleNamespace(collection=["Nugs_Orebolo"], identifier="nugs-29978 9-7-2022", name="nugs", filler=lambda: False)
+    names = [t.name for t in a.sort_across_collection([ia_orebolo, nugs, local, ia_goose])]
+    assert names == ["ia-goose", "local", "nugs", "ia-orebolo"]
