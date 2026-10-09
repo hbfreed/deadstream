@@ -135,6 +135,9 @@ def usb_mounted(archive_dir):
     if get_os_name() == "Ubuntu":  # in this case, look for archive in filesystem
         return is_writable(archive_dir)
 
+    if os.path.isdir(archive_dir) and not os.path.islink(archive_dir):  # an archive on the SD card, no USB stick
+        return is_writable(archive_dir)
+
     # Make sure that the archive_dir points to the USB archive.
     if os.path.islink(archive_dir):
         os.unlink(archive_dir)
