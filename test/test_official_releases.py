@@ -22,7 +22,7 @@ def local_tape(tmp_path, name, release=None, date="1973-12-19"):
 
 
 def ia_tape(name):
-    return SimpleNamespace(collection=["GratefulDead", "etree"], name=name, source_tier=lambda: 2)
+    return SimpleNamespace(collection=["GratefulDead", "etree"], name=name, filler=lambda: False)
 
 
 def release(role, primary, complete):

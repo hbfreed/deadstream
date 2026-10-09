@@ -3,8 +3,8 @@ from types import SimpleNamespace
 from timemachine import Archivary
 
 
-def tape(collection, name, tier=2):
-    return SimpleNamespace(collection=collection, name=name, source_tier=lambda: tier)
+def tape(collection, name):
+    return SimpleNamespace(collection=collection, name=name, filler=lambda: False)
 
 
 def make_archivary(collection_list):
@@ -24,8 +24,9 @@ def names(tapes):
 
 
 def test_same_name_local_and_ia_not_duplicated():
+    # one artist: the order of the collections is the order of preference
     a = make_archivary(["GratefulDead", "Local_GratefulDead"])
-    assert names(a.sort_across_collection([ia1, ia2, loc])) == ["ia1", "loc", "ia2"]
+    assert names(a.sort_across_collection([ia1, ia2, loc])) == ["ia1", "ia2", "loc"]
 
 
 def test_collection_order_respected():
@@ -51,3 +52,16 @@ def test_plex_and_phish():
     phish = tape(["Phish"], "phish")
     plex = tape(["Plex_home_Live Music"], "plex")
     assert names(a.sort_across_collection([phish, plex])) == ["phish", "plex"]
+
+
+def test_artists_alternate():
+    a = make_archivary(["GratefulDead", "JerryGarcia"])
+    jg1, jg2 = tape(["JerryGarcia"], "jg1"), tape(["JerryGarcia"], "jg2")
+    assert names(a.sort_across_collection([ia1, ia2, jg1, jg2])) == ["ia1", "jg1", "ia2", "jg2"]
+
+
+def test_collection_artist():
+    assert Archivary.collection_artist("Local_GratefulDead") == "GratefulDead"
+    assert Archivary.collection_artist("Nugs_GooseBand") == "GooseBand"
+    assert Archivary.collection_artist("GooseBand") == "GooseBand"
+    assert Archivary.collection_artist("Plex_home_Live Music") == "Plex_home_Live Music"

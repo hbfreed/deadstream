@@ -165,6 +165,13 @@ def remove_none(lis):
     return [a for a in lis if a is not None]
 
 
+def collection_artist(collection):
+    """The artist of a collection: "Local_GratefulDead" and "Nugs_GratefulDead" are the same artist as "GratefulDead" """
+    if collection.startswith("Plex_"):
+        return collection
+    return re.sub(r"^[A-Z][a-z]+_", "", collection)
+
+
 def plugin_collections(collection_list):
     """Collections served by optional archive modules: "Name_X" is served by timemachine.archive_name if that
     module exists (and has make_archive(collections, dbpath)). Returns {module: [collections]}"""
@@ -401,31 +408,30 @@ class Archivary:
         return None
 
     def sort_across_collection(self, tapes):
-        """Order the tapes of a date: by source tier (see BaseTape.source_tier), then alternating between
-        collections, keeping each collection's own order"""
-        tiers = sorted(set(t.source_tier() for t in tapes))
-        if len(tiers) > 1:
-            return [x for tier in tiers for x in self._round_robin([t for t in tapes if t.source_tier() == tier])]
-        return self._round_robin(tapes)
+        """Order the tapes of a date.
 
-    def _round_robin(self, tapes):
-        cdict = {}
-        for c in self.collection_list:
-            cdict[c] = []
-        unmatched = []
+        The order of COLLECTIONS is the order of preference among the sources of an artist: with
+        "Local_GratefulDead,GratefulDead" local tapes come before archive.org tapes; with "GratefulDead,Local_GratefulDead"
+        after them. Filler (see BaseTape.filler) comes last. Different artists on the same date alternate.
+        """
+        rank = {c: i for i, c in enumerate(self.collection_list)}
+        groups, unmatched = {}, []  # artist -> tapes
         for t in tapes:
             c = self.collection_of(t)
             if c is None:
                 unmatched.append(t)
             else:
-                cdict[c].append(t)
-
+                groups.setdefault(collection_artist(c), []).append(t)
+        ordered = []
+        for artist, ts in groups.items():
+            ts = sorted(ts, key=lambda t: (t.filler(), rank[self.collection_of(t)]))  # stable: keeps each source's order
+            ordered.append((min(rank[self.collection_of(t)] for t in ts), ts))
+        ordered = [ts for _, ts in sorted(ordered, key=lambda x: x[0])]
         result = []
-        max_n_collection = max([len(cdict[k]) for k in cdict])
-        for i in range(max_n_collection):
-            for k in cdict.keys():
-                if len(cdict[k]) > i:
-                    result.append(cdict[k][i])
+        for i in range(max([len(ts) for ts in ordered], default=0)):
+            for ts in ordered:
+                if len(ts) > i:
+                    result.append(ts[i])
         return result + unmatched
 
     def get_tape_dates(self, sort_across=True):  # Archivary
@@ -675,10 +681,9 @@ class BaseTape(abc.ABC):
         """None, or "complete"/"partial" for an official release (shown as a marker on the screen)"""
         return None
 
-    def source_tier(self):
-        """Where the tape sorts among the tapes of a date: 0 local tapes, 1 plugin sources (eg streaming services),
-        2 archive.org and other sources, 3 local filler"""
-        return 2
+    def filler(self):
+        """True for a tape holding only a little of a show (eg bonus tracks): it comes after the other tapes of the date"""
+        return False
 
 
 class BaseTrack:
@@ -1400,12 +1405,9 @@ class LocalTape(BaseTape):
             return "partial"
         return "complete"
 
-    def source_tier(self):
-        # Local tapes come first, except an official release holding only a little of the show (eg filler on a
-        # bonus disc), which comes after the archive.org tapes.
-        if self.release is not None and not self.release.get("primary", True):
-            return 3
-        return 0
+    def filler(self):
+        # an official release holding only a little of the show (eg bonus tracks from another night)
+        return self.release is not None and not self.release.get("primary", True)
 
     def compute_score(self):
         if self.release is not None:  # the night's tracks before the whole release

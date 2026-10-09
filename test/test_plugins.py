@@ -16,7 +16,7 @@ def test_plugin_collections(monkeypatch):
 def test_plugin_tapes_between_local_and_archive():
     a = Archivary.Archivary.__new__(Archivary.Archivary)
     a.collection_list = ["Local_GooseBand", "Fake_GooseBand", "GooseBand"]
-    ia = SimpleNamespace(collection=["GooseBand"], name="ia", source_tier=lambda: 2)
-    plugin = SimpleNamespace(collection=["Fake_GooseBand"], name="plugin", source_tier=lambda: 1)
-    local = SimpleNamespace(collection="GooseBand", name="local", source_tier=lambda: 0)
+    ia = SimpleNamespace(collection=["GooseBand"], name="ia", filler=lambda: False)
+    plugin = SimpleNamespace(collection=["Fake_GooseBand"], name="plugin", filler=lambda: False)
+    local = SimpleNamespace(collection="GooseBand", name="local", filler=lambda: False)
     assert [t.name for t in a.sort_across_collection([ia, plugin, local])] == ["local", "plugin", "ia"]

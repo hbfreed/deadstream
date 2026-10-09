@@ -1,5 +1,6 @@
 from time import sleep
 import difflib
+import re
 import os
 import optparse
 import logging
@@ -582,7 +583,9 @@ class OptionsServer(object):
             artist = artist.strip()
             if not artist.startswith("Plex"):
                 artist = artist.replace(" ", "")
-            if artist in valid_collection_names:
+            if re.match(r"^[A-Z][a-z]+_", artist):  # Local_..., Plex_..., other sources: not archive.org names
+                proper_collections.append(artist)
+            elif artist in valid_collection_names:
                 proper_collections.append(artist)
             elif artist.lower().strip() == "phish":
                 proper_collections.append("Phish")

@@ -178,6 +178,10 @@ rsync -a --delete /path/to/timemachine-releases/.release_audio/ deadhead@timemac
 rsync -a --delete /path/to/timemachine-releases/GratefulDead/official/ deadhead@timemachine.local:archive/GratefulDead/official/
 ```
 
+The order of COLLECTIONS is the order of preference among the sources of each artist: `Local_GratefulDead,GratefulDead`
+plays your releases first, `GratefulDead,Local_GratefulDead` the archive.org tapes. Releases holding only a little of a
+show (bonus tracks) always come last.
+
 On the Pi, `~/archive` must be a real folder. Upstream's code replaces a *symlink* there with one to a USB
 stick at `/mnt/usb/archive`. Add `Local_GratefulDead` to COLLECTIONS, before `GratefulDead`
 (`Local_GratefulDead,GratefulDead`). The Grateful Dead releases are about 28 GB as Ogg.
