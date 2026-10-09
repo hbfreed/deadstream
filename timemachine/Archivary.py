@@ -28,6 +28,7 @@ import random
 import re
 import requests
 import string
+import sys
 import tempfile
 import time
 from collections import OrderedDict
@@ -2378,6 +2379,10 @@ class GDTrack(BaseTrack):
 class GDSet_row:
     """Set Information from a Grateful Dead or (other collection) date"""
 
+    # 18,000 rows: slots and interned strings (venues, cities, dates repeat) keep them small
+    __slots__ = ("date", "artist", "time", "song", "venue", "city", "state", "break_length", "show_set",
+                 "song_n", "isong", "next_set", "Nevents", "ievent", "start_time")
+
     def __init__(self, data_row):
         for elem in [
             "date",
@@ -2396,7 +2401,7 @@ class GDSet_row:
             "Nevents",
             "ievent",
         ]:
-            setattr(self, elem, data_row.get(elem, ""))
+            setattr(self, elem, sys.intern(data_row.get(elem, "")))
         self.start_time = datetime.time.fromisoformat(self.time) if len(self.time) > 0 else None
 
     def __repr__(self):
@@ -2440,20 +2445,17 @@ class GDDate_info:
 class GDSetBreaks:
     """Set Information from a Grateful Dead date"""
 
+    _shared = None  # (set_rows, asd): every archive reads the same file, so they share one copy
+
     def __init__(self, collection_list):
         self.collection_list = collection_list
-        self.asd = {}
-        self.set_rows = []
-        # if 'GratefulDead' not in self.collection_list:
-        #    self.set_data = set_data
-        #    return
-        with open(utils.resource_path("timemachine.metadata", "set_breaks.csv"), "r", encoding="utf-8", newline="") as set_breaks:
-            r = [r for r in csv.reader(set_breaks)]
-        headers = r[0]
-        for row in r[1:]:
-            d = dict(zip(headers, row))
-            current_row = GDSet_row(d)
-            self.set_rows.append(current_row)
+        if GDSetBreaks._shared is None:
+            set_rows = []
+            with open(utils.resource_path("timemachine.metadata", "set_breaks.csv"), "r", encoding="utf-8", newline="") as set_breaks:
+                for d in csv.DictReader(set_breaks):
+                    set_rows.append(GDSet_row(d))
+            GDSetBreaks._shared = (set_rows, {})
+        self.set_rows, self.asd = GDSetBreaks._shared
 
         # self.set_data = set_data
 
