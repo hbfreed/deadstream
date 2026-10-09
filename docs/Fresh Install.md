@@ -235,3 +235,26 @@ sudo systemctl enable --now earlyoom apt-daily.timer apt-daily-upgrade.timer sha
 ```
 
 The hardware watchdog is on by default (systemd reboots the Pi if the system hangs for a minute).
+
+## 12. Claude (MCP, optional)
+
+Ask Claude, from the phone app or anywhere, to play a show. The Time Machine listens on a local control socket
+(`~/.timemachine-control.sock`, `timemachine/control.py`). `tools/timemachine_mcp.py` is an MCP server with
+music controls only (find shows, play, pause, skip, volume) that talks to that socket. It starts when Claude
+connects (about 6 seconds, 75 MB) and stops after 5 idle minutes. Tailscale Funnel gives it a public HTTPS address,
+and a secret in the URL keeps others out.
+
+```bash
+# Tailscale: https://tailscale.com/download/linux/debian-trixie, then `sudo tailscale up` and open the link.
+# In the admin console: DNS > HTTPS Certificates on, and allow Funnel for the Pi.
+uv venv ~/mcpenv --python 3.13 && uv pip install --python ~/mcpenv/bin/python "mcp>=2.3,<3"
+(umask 077; python3 -c "import json,secrets; json.dump({'secret': secrets.token_urlsafe(32), 'host': '<pi>.<tailnet>.ts.net'}, open('$HOME/.timemachine-mcp.json','w'))")
+D=docs/claude-mcp
+sudo cp $D/timemachine-mcp-proxy.socket $D/timemachine-mcp-proxy.service $D/timemachine-mcp.service /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable --now timemachine-mcp-proxy.socket
+sudo tailscale funnel --bg http://127.0.0.1:8765
+```
+
+Then in claude.ai: Settings > Connectors > Add custom connector, URL `https://<pi>.<tailnet>.ts.net/<secret>/mcp`
+(the secret is in `~/.timemachine-mcp.json`). It is then available in the Claude apps too. To shut others out
+after a leak, put a new secret in the file and update the connector.

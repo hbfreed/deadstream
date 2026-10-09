@@ -26,6 +26,7 @@ import re
 import subprocess
 import threading
 import sys
+import types
 import time
 from threading import Event, Lock
 from time import sleep
@@ -35,7 +36,7 @@ from tenacity import retry
 from tenacity.stop import stop_after_delay
 from typing import Callable
 
-from timemachine import airplay, Archivary, config, controls, GD
+from timemachine import airplay, Archivary, config, control, controls, GD
 
 knob_sense_path = os.path.join(os.getenv("HOME"), ".knob_sense")
 
@@ -1194,6 +1195,142 @@ if airplay.available():
         on_start=airplay_started, on_stop=airplay_event.set, on_track=lambda title, artist, album: airplay_event.set()
     )
     AIRPLAY.start()
+
+
+def control_commands(state):
+    """Commands for the control socket (timemachine/control.py). Buttons are pressed through their own handlers,
+    with a stand-in button that is never held."""
+    button = types.SimpleNamespace(is_pressed=False, is_held=False, _hold_time=0)
+    archive = state.date_reader.archive
+
+    def artist_of(tape):
+        c = archive.collection_of(tape)
+        return Archivary.collection_artist(c) if c else str(tape.artist)
+
+    def describe(tape, i=None):
+        d = {"recording": os.path.basename(str(tape.identifier).rstrip("/")), "artist": artist_of(tape),
+             "source": archive.collection_of(tape), "official": tape.official(), "venue": tape.venue()}
+        if i is not None:
+            d["index"] = i
+        return d
+
+    def status():
+        current = state.get_current()
+        keys = ["DATE", "VENUE", "ARTIST", "TAPE_ID", "TRACK_NUM", "TRACK_TITLE", "NEXT_TRACK_TITLE", "VOLUME"]
+        result = {k.lower(): current.get(k) for k in keys}
+        names = {config.INIT: "idle", config.READY: "ready", config.PLAYING: "playing", config.PAUSED: "paused",
+                 config.STOPPED: "stopped", config.ENDED: "ended"}
+        result["play_state"] = names.get(current.get("PLAY_STATE"), str(current.get("PLAY_STATE")))
+        result["dial_date"] = str(state.date_reader.date)
+        if AIRPLAY is not None and AIRPLAY.active:
+            result["airplay"] = {"title": AIRPLAY.title, "artist": AIRPLAY.artist, "album": AIRPLAY.album}
+        return result
+
+    def shows(year, month=None, artist=None, venue=None, limit=100):
+        """Dates in a year (and month) with recordings, optionally of an artist or at a venue (substring match)"""
+        prefix = f"{int(year):04d}" + (f"-{int(month):02d}" if month else "")
+        found = []
+        for date in (d for d in archive.dates if d.startswith(prefix)):
+            by_artist = {}
+            for tape in archive.tape_dates.get(date, []):
+                by_artist.setdefault(artist_of(tape), []).append(tape)
+            for a, tapes in by_artist.items():
+                if artist and artist.lower().replace(" ", "") not in a.lower():
+                    continue
+                v = tapes[0].venue()
+                if venue and venue.lower() not in str(v).lower():
+                    continue
+                official = next((t.official() for t in tapes if t.official()), None)
+                found.append({"date": date, "artist": a, "venue": v, "recordings": len(tapes), "official": official})
+                if len(found) >= limit:
+                    return found
+        return found
+
+    def library():
+        """The collections, in order of preference, the artists they cover, and the date range"""
+        artists = []
+        for c in archive.collection_list:
+            if Archivary.collection_artist(c) not in artists:
+                artists.append(Archivary.collection_artist(c))
+        return {"collections": list(archive.collection_list), "artists": artists,
+                "first_date": archive.dates[0] if archive.dates else None,
+                "last_date": archive.dates[-1] if archive.dates else None, "n_dates": len(archive.dates)}
+
+    def recordings(date):
+        """The recordings of a date, in the order the Time Machine prefers them"""
+        return [describe(t, i) for i, t in enumerate(archive.resort_tape_date(str(date)))]
+
+    def play(date, recording=None, artist=None):
+        """Turn the dial to a date and play it: its preferred recording, or one picked by index or name, or by artist"""
+        tapes = archive.resort_tape_date(str(date))
+        if not tapes:
+            raise ValueError(f"no recordings on {date}")
+        if artist:
+            tapes = [t for t in tapes if artist.lower().replace(" ", "") in artist_of(t).lower()] or tapes
+        tape = tapes[0]
+        if isinstance(recording, int) or (isinstance(recording, str) and recording.isdigit()):
+            tape = tapes[int(recording)]
+        elif recording:
+            tape = next((t for t in tapes if recording.lower() in str(t.identifier).lower()), None)
+            if tape is None:
+                raise ValueError(f"no recording matching {recording!r} on {date}")
+        free_event.wait()
+        free_event.clear()
+        try:
+            take_over_from_airplay()
+            state.date_reader.set_date(to_date(str(date)))
+            select_tape(tape, state, autoplay=True)
+            TMB.scr.wake_up()
+            TMB.select_event.set()
+            stagedate_event.set()
+        finally:
+            free_event.set()
+        return describe(tape)
+
+    def pause():
+        if state.get_current()["PLAY_STATE"] == config.PLAYING:
+            play_pause_button(button, state)
+        return status()
+
+    def resume():
+        if state.get_current()["PLAY_STATE"] != config.PLAYING:
+            play_pause_button(button, state)
+        return status()
+
+    def stop():
+        stop_button(button, state)
+        return status()
+
+    def next_track():
+        ffwd_button(button, state)
+        return status()
+
+    def previous_track():
+        rewind_button(button, state)
+        return status()
+
+    def random_show():
+        play_pause_button_longpress(button, state)
+        return status()
+
+    def volume(level=None):
+        """The player's volume, 0-100 (set it if level is given)"""
+        if level is not None:
+            level = max(0, min(100, int(level)))
+            state.player._set_property("volume", level)
+            current = state.get_current()
+            current["VOLUME"] = level
+            state.set(current)
+        return state.player.get_prop("volume")
+
+    return {f.__name__: f for f in [status, library, shows, recordings, play, pause, resume, stop, next_track, previous_track,
+                                    random_show, volume]}
+
+
+try:
+    CONTROL = control.serve(control_commands(state))
+except Exception:
+    logger.exception("control socket unavailable")
 
 # save_pid()
 lock = Lock()

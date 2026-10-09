@@ -1,0 +1,10 @@
+[Unit]
+Description=Time Machine MCP server for Claude (runs only while timemachine-mcp-proxy needs it)
+StopWhenUnneeded=yes
+
+[Service]
+User=deadhead
+# if memory runs out, earlyoom stops this before the Time Machine
+OOMScoreAdjust=900
+ExecStart=/home/deadhead/mcpenv/bin/python -I /home/deadhead/deadstream/tools/timemachine_mcp.py --port 8766
+ExecStartPost=/bin/bash -c 'for i in $(seq 300); do (exec 3<>/dev/tcp/127.0.0.1/8766) 2>/dev/null && exit 0; sleep 0.2; done; exit 1'

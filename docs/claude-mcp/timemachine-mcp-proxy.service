@@ -1,0 +1,7 @@
+[Unit]
+Description=Forward Claude's requests to the Time Machine MCP server while it is in use
+Requires=timemachine-mcp.service
+After=timemachine-mcp.service
+
+[Service]
+ExecStart=/usr/lib/systemd/systemd-socket-proxyd --exit-idle-time=5min 127.0.0.1:8766

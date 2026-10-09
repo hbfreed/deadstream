@@ -1,0 +1,9 @@
+[Unit]
+Description=Time Machine MCP server for Claude, started on demand
+
+[Socket]
+# Tailscale Funnel forwards https://<pi>.<tailnet>.ts.net here
+ListenStream=127.0.0.1:8765
+
+[Install]
+WantedBy=sockets.target
