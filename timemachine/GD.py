@@ -189,7 +189,10 @@ class GDPlayer(MPV):
             else:
                 self.stop_pulse_audio()
             self._set_property("audio-device", audio_device)
-            self.wait_for_property("audio-device", lambda v: v == audio_device)
+            try:
+                self.wait_for_property("audio-device", lambda v: v == audio_device, timeout=10)
+            except TimeoutError:
+                logger.warning(f"audio-device did not become {audio_device} in 10 s")
             if self.get_prop("current-ao") is None:
                 logger.warning("Current-ao is None")
                 # self.stop()
@@ -206,7 +209,12 @@ class GDPlayer(MPV):
         logger.debug("playing")
         self._set_property("pause", False)
         if wait:
-            self.wait_until_playing()  # blocking occasionally here.
+            # Without a timeout this waits forever when there is nothing to play (eg the tape has ended), and the
+            # button handler that called it holds the lock every other control waits on.
+            try:
+                self.wait_until_playing(timeout=20)
+            except TimeoutError:
+                logger.warning("playback did not start within 20 s")
 
     def pause(self, wait=True):
         logger.debug("pausing")

@@ -1109,10 +1109,18 @@ if config.optd["PULSEAUDIO_ENABLE"]:
     player.set_audio_device("pulse")
 
 
+_last_playlist_pos = None
+
+
 @player.property_observer("playlist-pos")
 def on_track_event(_name, value):
+    global _last_playlist_pos
     logger.info(f"in track event callback {_name}, {value}")
-    if value is None:
+    # The tape has ended: python-mpv < 1.0 reports None, 1.0 (libmpv2) reports -1. A -1 also comes once at
+    # startup, before any track has played, so only a -1 that follows a track counts.
+    ended = value is None or (value == -1 and _last_playlist_pos is not None and _last_playlist_pos >= 0)
+    _last_playlist_pos = value
+    if ended:
         config.PLAY_STATE = config.ENDED
         config.PAUSED_AT = datetime.datetime.now()
         try:
