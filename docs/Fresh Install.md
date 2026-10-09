@@ -163,3 +163,21 @@ sudo systemctl daemon-reload && sudo systemctl reload dbus && sudo systemctl res
 
 The Time Machine notices shairport-sync by `/etc/shairport-sync.conf` and reads its metadata pipe
 (`/tmp/shairport-sync-metadata`). shairport-sync uses about 17 MB of memory.
+
+## 10. Official releases (optional)
+
+`tools/map_releases.py` runs on a laptop. It matches official release folders (Dick's Picks, Dave's Picks,
+...) to show dates, converts FLAC to Ogg Vorbis, and writes tape folders that the Time Machine reads as the
+`Local_GratefulDead` collection. On a date with a release, the release plays first and a star marks it (hollow
+for a partial show). The archive.org tapes are still there when you cycle through tapes by holding Select.
+
+```bash
+python tools/map_releases.py --out /path/to/timemachine-releases "/path/to/Music/Grateful Dead"
+# check /path/to/timemachine-releases/report.txt; fix dates in overrides.toml in that folder and run again
+rsync -a --delete /path/to/timemachine-releases/.release_audio/ deadhead@timemachine.local:archive/.release_audio/
+rsync -a --delete /path/to/timemachine-releases/GratefulDead/official/ deadhead@timemachine.local:archive/GratefulDead/official/
+```
+
+On the Pi, `~/archive` must be a real folder. Upstream's code replaces a *symlink* there with one to a USB
+stick at `/mnt/usb/archive`. Add `Local_GratefulDead` to COLLECTIONS, before `GratefulDead`
+(`Local_GratefulDead,GratefulDead`). The Grateful Dead releases are about 28 GB as Ogg.
