@@ -754,6 +754,10 @@ def nearby_dates(dates, show_dates, days=21):
 # ---------------------------------------------------------------------------------------------------------
 
 
+def set_order(name):
+    return 99 if name == "E" else int(name) if str(name).isdigit() else 0
+
+
 def safe_name(s):
     return re.sub(r"\s+", " ", re.sub(r'[/\\:*?"<>|]+', " ", s)).strip()
 
@@ -788,7 +792,9 @@ class Writer:
             for k in show["tracks"]:
                 _, j, _ = mapping.assignment[k]
                 sets = mapping.setlists[date]["sets"]
-                if 0 <= j < len(sets):
+                if 0 <= j < len(sets) and set_order(sets[j]) > set_order(current):
+                    # only ever move forward: the Time Machine plays a set break (10 minutes of silence) at each
+                    # change of set, and releases often put a song from an earlier set later on the disc
                     current = sets[j]
                 tracks.append((files[k], release.tracks[k].title, current))
             role = {"role": "show", "date": date, **{x: show[x] for x in ("coverage", "complete", "primary", "full_sets")}}
