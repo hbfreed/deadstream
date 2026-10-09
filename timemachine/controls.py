@@ -1087,11 +1087,13 @@ class state:
             if not isinstance(self.player.tape, type(None)):  # needs to cover all archive types
                 self.dict["TAPE_ID"] = self.player.tape.identifier
                 self.dict["VENUE"] = self.player.tape.venue()
-                if (self.dict["TRACK_NUM"]) < len(self.player.playlist):
-                    self.dict["TRACK_TITLE"] = self.player.tape.tracks()[self.dict["TRACK_NUM"]].title
-                if (self.dict["TRACK_NUM"] + 1) < len(self.player.playlist):
+                tracks = self.player.tape.tracks()
+                playlist_length = len(self.player.playlist)
+                if 0 <= self.dict["TRACK_NUM"] < min(playlist_length, len(tracks)):
+                    self.dict["TRACK_TITLE"] = tracks[self.dict["TRACK_NUM"]].title
+                if 0 <= (self.dict["TRACK_NUM"] + 1) < min(playlist_length, len(tracks)):
                     next_track = self.dict["TRACK_NUM"] + 1
-                    self.dict["NEXT_TRACK_TITLE"] = self.player.tape.tracks()[next_track].title
+                    self.dict["NEXT_TRACK_TITLE"] = tracks[next_track].title
                 else:
                     self.dict["NEXT_TRACK_TITLE"] = ""
         except Exception:

@@ -37,3 +37,8 @@ cld_env
 dist
 timemachine/metadata/vcs/*
 vvvscode/*
+# Generated set-break index
+/timemachine/metadata/set_breaks.sqlite*
+
+# the archive.org index the Time Machine builds (timemachine/tapedb.py)
+timemachine/metadata/tapes.sqlite*

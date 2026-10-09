@@ -16,7 +16,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
 import abc
-import csv
 import datetime
 import difflib
 import importlib
@@ -43,6 +42,7 @@ from typing import Callable, Optional
 from timemachine import config
 from timemachine import utils
 from timemachine.tapedb import TapeDB
+from timemachine.setbreakdb import SetBreakDB
 
 logging.basicConfig(
     format="%(asctime)s.%(msecs)03d %(levelname)s: %(name)s %(message)s",
@@ -211,7 +211,7 @@ class LazyTapeDates(Mapping):
     tape objects (with any metadata they have loaded) are returned while a date is in use.
     """
 
-    def __init__(self, dates, load, cache_size=64):
+    def __init__(self, dates, load, cache_size=16):
         self._dates = set(dates)
         self._load = load
         self._cache = OrderedDict()
@@ -2117,9 +2117,13 @@ class GDTape(BaseTape):
         if only_if_cached and not os.path.exists(self.meta_path):  # we don't have it cached, so return.
             return
         self._tracks = []
+        downloaded = False
         try:  # I used to check if file exists, but it may also be corrupt, so this is safer.
-            page_meta = json.load(open(self.meta_path, "r"))
+            with open(self.meta_path, "r") as f:
+                page_meta = json.load(f)
         except Exception:
+            if only_if_cached:
+                return  # browsing should not block on a download to repair a corrupt cache
             r = requests.get(self.url_metadata)
             logger.debug("url is {}".format(r.url))
             if r.status_code != 200:
@@ -2127,6 +2131,7 @@ class GDTape(BaseTape):
                 raise Exception("Download", "Error {} url {}".format(r.status_code, self.url_metadata))
             try:
                 page_meta = r.json()
+                downloaded = True
             except ValueError:
                 logger.warning("Json Error {}".format(r.url))
                 return
@@ -2172,7 +2177,10 @@ class GDTape(BaseTape):
             # logger.warn(f"Failed to read venue, city, state from metadata. {self.meta_path}")
             pass
 
-        self.write_metadata(page_meta)
+        if downloaded:
+            self.write_metadata(page_meta)
+        else:
+            self.meta_loaded = True
 
         for track in self._tracks:
             if not isinstance(track.title, (str, bytes)):
@@ -2445,19 +2453,12 @@ class GDDate_info:
 class GDSetBreaks:
     """Set Information from a Grateful Dead date"""
 
-    _shared = None  # (set_rows, asd): every archive reads the same file, so they share one copy
-
     def __init__(self, collection_list):
         self.collection_list = collection_list
-        if GDSetBreaks._shared is None:
-            set_rows = []
-            with open(utils.resource_path("timemachine.metadata", "set_breaks.csv"), "r", encoding="utf-8", newline="") as set_breaks:
-                for d in csv.DictReader(set_breaks):
-                    set_rows.append(GDSet_row(d))
-            GDSetBreaks._shared = (set_rows, {})
-        self.set_rows, self.asd = GDSetBreaks._shared
-
-        # self.set_data = set_data
+        self.db = SetBreakDB(
+            os.path.join(config.DB_PATH, "set_breaks.sqlite"),
+            utils.resource_path("timemachine.metadata", "set_breaks.csv"),
+        )
 
     def __str__(self):
         return self.__repr__()
@@ -2467,21 +2468,14 @@ class GDSetBreaks:
         return retstr
 
     def get_artist_set_dict(self, artist):
-        if artist in self.asd.keys():
-            return self.asd[artist]
-
-        self.asd[artist] = {}
-        artist_rows = [sd for sd in self.set_rows if sd.artist == artist]
-        for s in artist_rows:
-            if not s.date in self.asd[artist].keys():
-                self.asd[artist][s.date] = [s]
-            else:
-                self.asd[artist][s.date].append(s)
-
-        return self.asd[artist]
+        dates = {}
+        for raw in self.db.rows(artist):
+            row = GDSet_row(raw)
+            dates.setdefault(row.date, []).append(row)
+        return dates
 
     def get_date(self, artist, date):
-        return GDDate_info(self.get_artist_set_dict(artist).get(date, []))
+        return GDDate_info([GDSet_row(raw) for raw in self.db.rows(artist, date)])
 
     def multi_location(self, artist, date):
         d = self.get_date(artist, date)

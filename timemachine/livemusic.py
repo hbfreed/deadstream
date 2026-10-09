@@ -784,8 +784,9 @@ def event_loop(state, lock):
     stagedate_event.set()
     TMB.scr.clear()
 
-    loop_delay = 0.01
-    # loop_delay = 0.5
+    # GPIO callbacks handle input immediately; this loop only paints pending UI
+    # changes and performs periodic housekeeping.
+    loop_delay = 0.05
     try:
         while not stop_loop_event.wait(timeout=loop_delay):
             if not free_event.wait(timeout=0.01):
@@ -795,7 +796,6 @@ def event_loop(state, lock):
             n_timer = n_timer + 1
             idle_seconds = (now - last_sdevent).seconds
             idle_second_hand = divmod(idle_seconds, max_second_hand)[1]
-            current = retry_call(get_current, state)  # if this fails, try again
 
             if airplay_event.is_set():
                 airplay_event.clear()
@@ -849,6 +849,7 @@ def event_loop(state, lock):
                 q_counter = False
                 TMB.screen_event.set()
             if idle_second_hand in refresh_times and idle_second_hand != last_idle_second_hand:
+                current = retry_call(get_current, state)
                 last_idle_second_hand = idle_second_hand
                 # if now.minute != last_idle_minute:
                 # if now.day != last_idle_day:
