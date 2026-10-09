@@ -24,6 +24,10 @@ from threading import BoundedSemaphore, Event
 from time import sleep
 from typing import Callable
 
+# lgpio (gpiozero's backend on bookworm and later) writes notification files to LG_WD, which
+# defaults to the working directory. systemd services run in /, where we can't write.
+os.environ.setdefault("LG_WD", "/tmp")
+
 import adafruit_rgb_display.st7735 as st7735
 import board
 import digitalio

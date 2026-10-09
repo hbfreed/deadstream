@@ -8,7 +8,7 @@ python-mpv
 cherrypy
 psutil
 requests
-RPi.GPIO
+rpi-lgpio
 adafruit-blinka
 adafruit-circuitpython-rgb-display
 Pillow

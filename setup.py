@@ -40,7 +40,7 @@ setup(
         "plexapi",
         "python-mpv>=1.0",
         "requests",
-        "RPi.GPIO",
+        "rpi-lgpio",
         "tenacity",
         "wheel",
     ],
