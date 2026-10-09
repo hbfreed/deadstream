@@ -29,6 +29,8 @@ import requests
 import string
 import tempfile
 import time
+from collections import OrderedDict
+from collections.abc import Mapping
 from threading import Event, Lock, Thread
 
 from operator import methodcaller
@@ -38,6 +40,7 @@ from typing import Callable, Optional
 
 from timemachine import config
 from timemachine import utils
+from timemachine.tapedb import TapeDB
 
 logging.basicConfig(
     format="%(asctime)s.%(msecs)03d %(levelname)s: %(name)s %(message)s",
@@ -173,6 +176,67 @@ def parse_plex_collection_name(collection_name):
     if section == "":
         section = "Live Music"
     return (label, section)
+
+
+class LazyTapeDates(Mapping):
+    """Maps date -> list of tapes, like the tape_dates dict, but builds the tapes for a date when asked for them.
+
+    load(date) returns the tapes for a date. The lists for the most recently used dates are kept, so the same
+    tape objects (with any metadata they have loaded) are returned while a date is in use.
+    """
+
+    def __init__(self, dates, load, cache_size=64):
+        self._dates = set(dates)
+        self._load = load
+        self._cache = OrderedDict()
+        self._cache_size = cache_size
+        self._lock = Lock()
+
+    def __contains__(self, date):
+        return date in self._dates
+
+    def __getitem__(self, date):
+        if date not in self._dates:
+            raise KeyError(date)
+        with self._lock:
+            if date in self._cache:
+                self._cache.move_to_end(date)
+                return self._cache[date]
+            tapes = self._load(date)
+            self._cache[date] = tapes
+            if len(self._cache) > self._cache_size:
+                self._cache.popitem(last=False)
+            return tapes
+
+    def __iter__(self):
+        return iter(sorted(self._dates))
+
+    def __len__(self):
+        return len(self._dates)
+
+
+class MergedTapeDates(Mapping):
+    """The tape_dates of several archives, as one mapping of date -> tapes, sorted across collections"""
+
+    def __init__(self, archives, dates, sort_across):
+        self._archives = archives
+        self._dates = dates
+        self._sort_across = sort_across
+
+    def __contains__(self, date):
+        return any(date in a.tape_dates for a in self._archives)
+
+    def __getitem__(self, date):
+        tapes = [t for a in self._archives if date in a.tape_dates for t in a.tape_dates[date]]
+        if len(tapes) == 0:
+            raise KeyError(date)
+        return self._sort_across(tapes)
+
+    def __iter__(self):
+        return iter(self._dates)
+
+    def __len__(self):
+        return len(self._dates)
 
 
 class Archivary:
@@ -328,19 +392,11 @@ class Archivary:
 
     def get_tape_dates(self, sort_across=True):  # Archivary
         _ = [a.get_tape_dates() for a in self.archives]
-        td = self.archives[0].tape_dates
-        for a in self.archives[1:]:
-            logger.info(f"getting tapes from {a}")
-            for date, tapes in a.tape_dates.items():
-                if date in td.keys():
-                    for t in tapes:
-                        td[date].append(t)
-                else:
-                    td[date] = tapes
-        if (not sort_across) or (len(self.archives) == 1):
-            return td
-        td = {date: self.sort_across_collection(tapes) for date, tapes in td.items()}
-        return td
+        if len(self.archives) == 1:
+            return self.archives[0].tape_dates
+        dates = sorted(set().union(*[a.tape_dates.keys() for a in self.archives]))
+        sort = self.sort_across_collection if sort_across else (lambda tapes: tapes)
+        return MergedTapeDates(self.archives, dates, sort)
 
     def resort_tape_date(self, date):
         if date not in self.dates:
@@ -424,8 +480,11 @@ class BaseArchive(abc.ABC):
     def __str__(self):
         return self.__repr__()
 
+    def n_tapes(self):
+        return len(self.tapes)
+
     def __repr__(self):
-        Ntapes = len(self.tapes)
+        Ntapes = self.n_tapes()
         Ndates = len(self.dates)
         retstr = f"{self.collection_list} Archive with {Ntapes} tapes on {Ndates} dates "
         if Ndates > 0:
@@ -1719,15 +1778,33 @@ class GDArchive(BaseArchive):
         self.archive_type = "Internet Archive"
         self.set_data = GDSetBreaks(self.collection_list)
         self.date_range = date_range
+        self.tapedb = TapeDB(os.path.join(dbpath, "tapes.sqlite"))
         self.load_archive(reload_ids, with_latest)
 
     def load_archive(self, reload_ids=False, with_latest=False):
-        self.tapes = self.load_tapes(reload_ids, with_latest)
-        sort_within = True
+        dates = self.load_tapes(reload_ids, with_latest)
+        # the updater thread reloads while the player reads: swap in tape_dates before the dates that index it
+        self.tape_dates = LazyTapeDates(dates, self.tapes_on)
+        self.dates = dates
+
+    def get_tape_dates(self, sort_within=True):  # IA
+        return self.tape_dates
+
+    def tapes_on(self, date):  # IA
+        """Build the tapes on a date from the tape index, best first"""
+        raws = self.tapedb.tapes_on(date, self.collection_list)
+        tapes = [GDTape(self.dbpath, raw, self.set_data, self.collection_list) for raw in raws]
         if "georgeblood" in self.collection_list:
-            sort_within = False
-        self.tape_dates = self.get_tape_dates(sort_within=sort_within)
-        self.dates = sorted(self.tape_dates.keys())
+            return tapes
+        try:
+            return sorted(tapes, key=methodcaller("compute_score"), reverse=True)
+        except Exception as e:
+            logger.exception(f"{e}")
+            logger.warning(f"Failed to sort tapes on {date}")
+            return tapes
+
+    def n_tapes(self):
+        return self.tapedb.count(self.collection_list)
 
     def resort_tape_date(self, date):  # IA
         """archive.org version of this method"""
@@ -1754,20 +1831,23 @@ class GDArchive(BaseArchive):
             tapes = self.tape_dates[date]
         return tapes[0]
 
-    def load_current_tapes(self, reload_ids=False, meta_path=None):  # IA
-        """Load current tapes or download them from archive.org if they are not already loaded"""
-        logger.debug("Loading current tapes")
-        meta_path = self.idpath if meta_path is None else meta_path
-        tapes = []
-        addeddates = []
-        collection_path = os.path.join(os.getenv("HOME"), ".etree_collection_names.json")
-        yearly_collections = ["etree", "georgeblood"]  # should this be in config?
-
+    def years_to_load(self):
         if not self.date_range:
             self.date_range = [1880, datetime.datetime.now().year]
         elif isinstance(self.date_range, int):
             self.date_range = [self.date_range]
-        years_to_load = range(min(self.date_range), max(self.date_range) + 1) if len(self.date_range) <= 2 else self.date_range
+        return range(min(self.date_range), max(self.date_range) + 1) if len(self.date_range) <= 2 else self.date_range
+
+    def load_current_tapes(self, reload_ids=False, meta_path=None):  # IA
+        """Download tapes from archive.org if they are not already downloaded, and index them.
+
+        Returns the latest addeddate of the downloaded tapes, or None if there are none.
+        """
+        logger.debug("Loading current tapes")
+        meta_path = self.idpath if meta_path is None else meta_path
+        collection_path = os.path.join(os.getenv("HOME"), ".etree_collection_names.json")
+        yearly_collections = ["etree", "georgeblood"]  # should this be in config?
+        years_to_load = self.years_to_load()
 
         meta_files = os.listdir(meta_path) if os.path.exists(meta_path) else []
         meta_files = [x for x in meta_files if x.endswith(".json")]
@@ -1792,34 +1872,21 @@ class GDArchive(BaseArchive):
                 self.downloader.save_all_collection_names()
             except Exception as e:
                 logger.warning(f"Error saving all collection_names {e}")
-        # loop over chunks -- get max addeddate before filtering collections.
-        if os.path.isdir(meta_path):
-            for filename in os.listdir(meta_path):
-                if filename.endswith(".json"):
-                    time_period = int(filename.split("_")[-1].replace(".json", ""))
-                    # if min_year <= time_period <= max_year:
-                    if time_period in years_to_load:
-                        logger.debug(f"loading time period {time_period}")
-                        chunk = json.load(open(os.path.join(meta_path, filename), "r"))
-                        addeddates.append(max([x["addeddate"] for x in chunk]))
-                        chunk = [t for t in chunk if any(x in self.collection_list for x in t["collection"])]
-                        tapes.extend(chunk)
-        else:
-            tapes = json.load(open(meta_path, "r"))
-            addeddates.append(max([x["addeddate"] for x in tapes]))
-            tapes = [t for t in tapes if any(x in self.collection_list for x in t["collection"])]
-        max_addeddate = max(addeddates) if len(tapes) > 0 else None
-        return (tapes, max_addeddate)
+        self.tapedb.sync(meta_path)
+        return self.tapedb.max_addeddate(meta_path)
 
     def load_tapes(self, reload_ids=False, with_latest=False):  # IA
-        """Load the tapes, then add anything which has been added since the tapes were saved"""
+        """Load the tapes, then add anything which has been added since the tapes were saved.
+
+        Returns the sorted dates which have tapes. The tapes themselves stay in the tape index.
+        """
         logger.debug("begin loading tapes")
-        all_tapes_count = 0
-        all_loaded_tapes = []
+        if reload_ids:
+            self.tapedb.reset()
         for meta_path in self.idpath:
             n_tapes = 0
-            loaded_tapes, max_addeddate = self.load_current_tapes(reload_ids, meta_path=meta_path)
-            if len(loaded_tapes) == 0:  # e.g. in case of an invalid collection
+            max_addeddate = self.load_current_tapes(reload_ids, meta_path=meta_path)
+            if max_addeddate is None:  # e.g. in case of an invalid collection
                 continue
             logger.debug(f"max addeddate {max_addeddate}")
             if with_latest:
@@ -1833,20 +1900,15 @@ class GDArchive(BaseArchive):
                     logger.info(f"Loaded {n_tapes} new tapes from archive {meta_path}")
             if n_tapes > 0:
                 logger.info(f"Adding {n_tapes} tapes")
-                loaded_tapes, _ = self.load_current_tapes(meta_path=meta_path)
-            all_loaded_tapes.extend(loaded_tapes)
-            all_tapes_count = all_tapes_count + n_tapes
-        if (all_tapes_count == 0) and (len(self.tapes) > 0):  # The tapes have already been written, and nothing was added
-            return self.tapes
-        self.tapes = [GDTape(self.dbpath, tape, self.set_data, self.collection_list) for tape in all_loaded_tapes]
-        return self.tapes
+                self.tapedb.sync(meta_path)
+        return self.tapedb.dates(self.collection_list, self.years_to_load())
 
     def year_artists(self, year, other_year=None):
         """NOTE: should use some caching here"""
         id_dict = {}
         other_year = other_year if other_year else year
         start_year, end_year = sorted([year, other_year])
-        year_tapes = {k: v for k, v in self.tape_dates.items() if start_year <= int(k[:4]) <= end_year}
+        year_tapes = {k: self.tapes_on(k) for k in self.dates if start_year <= int(k[:4]) <= end_year}
         logger.info(f"Select artists between {start_year} and {end_year}. There are {len(year_tapes)} tapes")
 
         tapes = [item for sublist in year_tapes.values() for item in sublist]
