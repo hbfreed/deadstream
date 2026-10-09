@@ -16,6 +16,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
 import datetime
+import functools
 import json
 import logging
 import optparse
@@ -78,14 +79,28 @@ def retry_call(callable: Callable, *args, **kwargs):
     return callable(*args, **kwargs)
 
 
+def logged(func):
+    """Log a control's exception instead of raising it: the knobs and buttons all share one callback thread"""
+
+    @functools.wraps(func)
+    def inner(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except Exception:
+            logger.exception(f"{func.__name__} failed")
+
+    return inner
+
+
 def sequential(func):
     def inner(*args, **kwargs):
         free_event.wait()
         free_event.clear()
         try:
             func(*args, **kwargs)
-        except BaseException:
-            raise
+        except Exception:
+            # log, don't raise: the knobs and buttons all share one callback thread, which an exception would end
+            logger.exception(f"{func.__name__} failed")
         finally:
             free_event.set()
 
@@ -182,6 +197,7 @@ def save_state(state):
 #        raise e
 
 
+@logged
 def twist_knob(knob: RotaryEncoder, label, date_reader: controls.date_knob_reader):
     if MENU_ACTIVE:
         # While menu is active, avoid date_reader.update() because it can remap
@@ -247,12 +263,12 @@ def select_tape(tape, state, autoplay=True):
 def select_current_date(state, autoplay=True):
     date_reader = state.date_reader
     if not date_reader.tape_available():
-        return
+        return state
     tapes = date_reader.archive.resort_tape_date(date_reader.fmtdate())
     if len(tapes) == 0:
         TMB.scr.show_venue("No Audio", color=(255, 255, 255), force=True)
         sleep(2)
-        return
+        return state
     shownum = date_reader.shownum
     if shownum > len(tapes) - 1:
         logger.warning(f"A tape has been removed from this date {date_reader.fmtdate()}")
@@ -515,6 +531,7 @@ def day_button(button, state):
     stagedate_event.set()
 
 
+@logged
 def day_button_longpress(button, state):
     logger.debug("long-pressing day button")
     TMB.scr.sleep()
