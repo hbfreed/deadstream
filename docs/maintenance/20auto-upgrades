@@ -1,0 +1,5 @@
+// /etc/apt/apt.conf.d/20auto-upgrades: refresh package lists and install security updates
+// (unattended-upgrades' Debian default: Debian-Security only; Raspberry Pi kernels and firmware are left alone)
+APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Unattended-Upgrade "1";
+APT::Periodic::AutocleanInterval "7";

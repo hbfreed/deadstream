@@ -207,3 +207,31 @@ show (bonus tracks) always come last.
 On the Pi, `~/archive` must be a real folder. Upstream's code replaces a *symlink* there with one to a USB
 stick at `/mnt/usb/archive`. Add `Local_GratefulDead` to COLLECTIONS, before `GratefulDead`
 (`Local_GratefulDead,GratefulDead`). The Grateful Dead releases are about 28 GB as Ogg.
+
+## 11. Maintenance
+
+Security updates at night, recovery from running out of memory, and a weekly check for a newer
+Shairport Sync (built from source, so Debian's updates don't reach it). Files are in `docs/maintenance/`.
+
+```bash
+D=docs/maintenance
+sudo apt install -y --no-install-recommends earlyoom unattended-upgrades
+# the Time Machine comes back after a crash, or after earlyoom stops it
+sudo mkdir -p /etc/systemd/system/timemachine.service.d
+sudo cp $D/timemachine.service.d-restart.conf /etc/systemd/system/timemachine.service.d/restart.conf
+# under 8% memory available, stop the Time Machine instead of grinding in swap
+sudo cp $D/earlyoom /etc/default/earlyoom
+# Debian security and stable updates at 3:30-4:30 am, never at boot (Raspberry Pi kernels and firmware are left alone)
+sudo cp $D/20auto-upgrades /etc/apt/apt.conf.d/20auto-upgrades
+sudo mkdir -p /etc/systemd/system/apt-daily.timer.d /etc/systemd/system/apt-daily-upgrade.timer.d
+sudo cp $D/apt-daily.timer.d-night.conf /etc/systemd/system/apt-daily.timer.d/night.conf
+sudo cp $D/apt-daily-upgrade.timer.d-night.conf /etc/systemd/system/apt-daily-upgrade.timer.d/night.conf
+# Sundays: is there a newer Shairport Sync? The answer shows at ssh login
+sudo install -m 755 $D/shairport-update-check /usr/local/sbin/
+sudo cp $D/shairport-update-check.service $D/shairport-update-check.timer /etc/systemd/system/
+sudo install -m 755 $D/90-shairport-update /etc/update-motd.d/
+sudo systemctl daemon-reload
+sudo systemctl enable --now earlyoom apt-daily.timer apt-daily-upgrade.timer shairport-update-check.timer
+```
+
+The hardware watchdog is on by default (systemd reboots the Pi if the system hangs for a minute).

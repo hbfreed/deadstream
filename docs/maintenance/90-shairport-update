@@ -1,0 +1,4 @@
+#!/bin/sh
+# /etc/update-motd.d/90-shairport-update: show the note from shairport-update-check at login
+[ -f /var/lib/shairport-update-check/note ] && echo && cat /var/lib/shairport-update-check/note
+exit 0

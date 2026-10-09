@@ -1,0 +1,4 @@
+# /etc/default/earlyoom: when available memory falls under 8% (about 37 MB), stop the Time Machine
+# (systemd restarts it) before the Pi grinds to a halt in swap. Swap is zram, so only RAM counts (-s 100).
+# Never touch apt or dpkg mid-upgrade, the audio services, or ssh.
+EARLYOOM_ARGS="-m 8 -s 100 -r 3600 --prefer ^timemachine$ --avoid ^(apt|apt-get|dpkg|unattended-upgr|sshd|systemd|pulseaudio|shairport-sync|nqptp)$"
