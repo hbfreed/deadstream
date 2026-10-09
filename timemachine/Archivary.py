@@ -122,13 +122,9 @@ class BaseTapeDownloader(abc.ABC):
             if n_period_tapes_added > 0:  # NOTE This condition prevents updates for _everything_ unless there are new tapes.
                 logger.info(f"Writing {len(period_tapes)} tapes to {outpath}")
                 try:
-                    tmpfile = tempfile.mkstemp(".json")[1]
-                    json.dump(period_tapes, open(tmpfile, "w"), indent=2)
-                    os.rename(tmpfile, outpath)
-                    logger.debug(f"renamed {tmpfile} to {outpath}")
+                    write_json_atomic(outpath, period_tapes, indent=2)
                 except Exception:
-                    logger.debug(f"removing {tmpfile}")
-                    os.remove(tmpfile)
+                    pass
         if n_tapes_added > 0:
             logger.info(f"added {n_tapes_added} tapes by period")
         return n_tapes_added
@@ -142,6 +138,23 @@ class BaseTapeDownloader(abc.ABC):
     def get_all_collection_names(self):
         """Get a list of all tapes."""
         pass
+
+
+def write_json_atomic(path, data, **dump_kwargs):
+    """Write json to a temp file next to path, then rename it into place.
+
+    The temp file must be on the same filesystem as path: os.replace fails across filesystems,
+    and /tmp is a tmpfs on Raspberry Pi OS trixie.
+    """
+    fd, tmpfile = tempfile.mkstemp(".json", dir=os.path.dirname(path) or ".")
+    try:
+        with os.fdopen(fd, "w") as f:
+            json.dump(data, f, **dump_kwargs)
+        os.replace(tmpfile, path)
+    except Exception:
+        logger.warning(f"Failed to write {path}", exc_info=True)
+        os.remove(tmpfile)
+        raise
 
 
 def remove_none(lis):
@@ -724,12 +737,9 @@ class IATapeDownloader(BaseTapeDownloader):
 
         collection_path = os.path.join(os.getenv("HOME"), ".etree_collection_names.json")
         try:
-            tmpfile = tempfile.mkstemp(".json")[1]
-            json.dump(j, open(tmpfile, "w"))
-            os.rename(tmpfile, collection_path)
+            write_json_atomic(collection_path, j)
         except Exception:
-            logger.debug(f"removing {tmpfile}")
-            os.remove(tmpfile)
+            pass
         logger.info(f"saved {current_rows} collection names to {collection_path}")
         return j
 
