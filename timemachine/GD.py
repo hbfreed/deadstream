@@ -97,6 +97,9 @@ class GDPlayer(MPV):
         # self._set_property('cache-on-disk','yes')
         self._set_property("audio-buffer", 10.0)  # This allows to play directly from the html without a gap!
         self._set_property("cache", "yes")
+        # mpv's defaults (150 MiB ahead, 50 MiB behind) are most of a 512 MB Pi; 20 MiB is minutes of audio
+        self._set_property("demuxer-max-bytes", "20MiB")
+        self._set_property("demuxer-max-back-bytes", "5MiB")
         self.tape = None
         self.download_when_possible = False
 
