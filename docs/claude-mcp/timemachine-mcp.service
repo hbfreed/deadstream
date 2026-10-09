@@ -3,8 +3,41 @@ Description=Time Machine MCP server for Claude (runs only while timemachine-mcp-
 StopWhenUnneeded=yes
 
 [Service]
-User=deadhead
+# Its own user: no sudo, no shell, no home. It can reach the Time Machine's control socket and nothing else.
+User=tmmcp
+Group=tmmcp
+SupplementaryGroups=tmcontrol
+Environment=TIMEMACHINE_CONTROL_SOCKET=/run/timemachine/control.sock
+Environment=TIMEMACHINE_MCP_CONFIG=/etc/timemachine-mcp.json
+ExecStart=/opt/timemachine-mcp/venv/bin/python -I /opt/timemachine-mcp/timemachine_mcp.py --port 8766
+ExecStartPost=/bin/bash -c 'for i in $(seq 300); do (exec 3<>/dev/tcp/127.0.0.1/8766) 2>/dev/null && exit 0; sleep 0.2; done; exit 1'
 # if memory runs out, earlyoom stops this before the Time Machine
 OOMScoreAdjust=900
-ExecStart=/home/deadhead/mcpenv/bin/python -I /home/deadhead/deadstream/tools/timemachine_mcp.py --port 8766
-ExecStartPost=/bin/bash -c 'for i in $(seq 300); do (exec 3<>/dev/tcp/127.0.0.1/8766) 2>/dev/null && exit 0; sleep 0.2; done; exit 1'
+
+# Sandbox: if someone got in through a bug, they'd be stuck here
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+RestrictAddressFamilies=AF_UNIX AF_INET
+# no network but localhost: it can't reach the internet, the LAN or the tailnet
+IPAddressDeny=any
+IPAddressAllow=localhost
+UMask=0077

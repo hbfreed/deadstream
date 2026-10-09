@@ -238,23 +238,44 @@ The hardware watchdog is on by default (systemd reboots the Pi if the system han
 
 ## 12. Claude (MCP, optional)
 
-Ask Claude, from the phone app or anywhere, to play a show. The Time Machine listens on a local control socket
-(`~/.timemachine-control.sock`, `timemachine/control.py`). `tools/timemachine_mcp.py` is an MCP server with
-music controls only (find shows, play, pause, skip, volume) that talks to that socket. It starts when Claude
-connects (about 6 seconds, 75 MB) and stops after 5 idle minutes. Tailscale Funnel gives it a public HTTPS address,
-and a secret in the URL keeps others out.
+Ask Claude, from the phone app or anywhere, to play a show. The Time Machine serves a control socket
+(`timemachine/control.py`). `tools/timemachine_mcp.py` is an MCP server with music controls only (find shows, play,
+pause, skip, volume) that talks to that socket. It starts when Claude connects (about 5 seconds, 75 MB) and stops after
+5 idle minutes. Tailscale Funnel gives it a public HTTPS address, and a secret in the URL keeps others out.
+
+It runs sandboxed, as its own user `tmmcp`: no sudo, no home, a read-only filesystem, and no network but localhost, so
+a break-in through a bug could only play music. The control socket is in `/run/timemachine`, for the group `tmcontrol`.
 
 ```bash
 # Tailscale: https://tailscale.com/download/linux/debian-trixie, then `sudo tailscale up` and open the link.
 # In the admin console: DNS > HTTPS Certificates on, and allow Funnel for the Pi.
-uv venv ~/mcpenv --python 3.13 && uv pip install --python ~/mcpenv/bin/python "mcp>=2.3,<3"
-(umask 077; python3 -c "import json,secrets; json.dump({'secret': secrets.token_urlsafe(32), 'host': '<pi>.<tailnet>.ts.net'}, open('$HOME/.timemachine-mcp.json','w'))")
+sudo groupadd -r tmcontrol
+sudo useradd -r -U -M -d /nonexistent -s /usr/sbin/nologin tmmcp
+sudo usermod -aG tmcontrol deadhead
+sudo mkdir -p /opt/timemachine-mcp
+sudo ~/.local/bin/uv venv /opt/timemachine-mcp/venv --python /usr/bin/python3
+sudo ~/.local/bin/uv pip install --python /opt/timemachine-mcp/venv/bin/python "mcp>=2.3,<3"
+sudo install -m 644 tools/timemachine_mcp.py /opt/timemachine-mcp/
+# the sandbox can't write .pyc files, so compile them now (cold start 5 s instead of 12)
+sudo /opt/timemachine-mcp/venv/bin/python -m compileall -q /opt/timemachine-mcp /usr/lib/python3.13
+sudo python3 -c "import json,secrets; json.dump({'secret': secrets.token_urlsafe(32), 'host': '<pi>.<tailnet>.ts.net'}, open('/etc/timemachine-mcp.json','w'))"
+sudo chown root:tmmcp /etc/timemachine-mcp.json && sudo chmod 640 /etc/timemachine-mcp.json
 D=docs/claude-mcp
+sudo cp $D/timemachine-control.tmpfiles.conf /etc/tmpfiles.d/timemachine-control.conf
+sudo systemd-tmpfiles --create /etc/tmpfiles.d/timemachine-control.conf
+sudo mkdir -p /etc/systemd/system/timemachine.service.d
+sudo cp $D/timemachine.service.d-control.conf /etc/systemd/system/timemachine.service.d/control.conf
 sudo cp $D/timemachine-mcp-proxy.socket $D/timemachine-mcp-proxy.service $D/timemachine-mcp.service /etc/systemd/system/
 sudo systemctl daemon-reload && sudo systemctl enable --now timemachine-mcp-proxy.socket
+sudo systemctl restart timemachine
 sudo tailscale funnel --bg http://127.0.0.1:8765
 ```
 
 Then in claude.ai: Settings > Connectors > Add custom connector, URL `https://<pi>.<tailnet>.ts.net/<secret>/mcp`
-(the secret is in `~/.timemachine-mcp.json`). It is then available in the Claude apps too. To shut others out
-after a leak, put a new secret in the file and update the connector.
+(the secret is in `/etc/timemachine-mcp.json`). It is then available in the Claude apps too. To shut others out
+after a leak, put a new secret in the file and update the connector. After updating `tools/timemachine_mcp.py`,
+reinstall it to `/opt/timemachine-mcp` and compile it again.
+
+`systemd-analyze security timemachine-mcp.service` rates the sandbox 1.2 (0 is locked down, 10 is exposed).
+For the network as a whole, see `docs/claude-mcp/tailscale-acl.md`: it keeps the Pi from opening connections to the
+other machines on the tailnet.

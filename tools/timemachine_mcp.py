@@ -19,8 +19,8 @@ from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.server.transport_security import TransportSecuritySettings
 
-CONFIG_PATH = os.path.join(os.getenv("HOME", ""), ".timemachine-mcp.json")
-SOCKET_PATH = os.path.join(os.getenv("HOME", ""), ".timemachine-control.sock")
+CONFIG_PATH = os.getenv("TIMEMACHINE_MCP_CONFIG") or os.path.join(os.getenv("HOME", ""), ".timemachine-mcp.json")
+SOCKET_PATH = os.getenv("TIMEMACHINE_CONTROL_SOCKET") or os.path.join(os.getenv("HOME", ""), ".timemachine-control.sock")
 
 server = MCPServer(
     "Time Machine",
