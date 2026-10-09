@@ -1248,7 +1248,7 @@ class PhishinTape(BaseTape):
             set_name = track_data["set"]
             if itrack == 0:
                 current_set = set_name
-            if set_name != current_set:
+            if set_name != current_set and config.optd.get("SET_BREAKS", True):
                 self._tracks.append(PhishinTrack(track_data, self.identifier, break_track=True))
                 current_set = set_name
             self._tracks.append(PhishinTrack(track_data, self.identifier))
@@ -1461,7 +1461,7 @@ class LocalTape(BaseTape):
             set_name = track_data.get("set", "1")
             if itrack == 0:
                 current_set = set_name
-            if set_name != current_set:
+            if set_name != current_set and config.optd.get("SET_BREAKS", True):
                 self._tracks.append(LocalTrack(track_data, self.identifier, break_track=True))
                 current_set = set_name
             self._tracks.append(LocalTrack(track_data, self.identifier))
@@ -2275,6 +2275,8 @@ class GDTape(BaseTape):
             return
         if not breaks:
             breaks = self._compute_breaks()
+            if not config.optd.get("SET_BREAKS", True):  # no 10 minutes of silence between sets or shows
+                breaks = {k: v for k, v in breaks.items() if k not in ("long", "location")}
         longbreak_path = utils.resource_path("timemachine.metadata", "silence600.ogg")
         breakd = {
             "track": -1,

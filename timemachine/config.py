@@ -74,6 +74,7 @@ def default_options():
     d["UPDATE_ARCHIVE_ON_STARTUP"] = False
     d["PLAY_LOSSLESS"] = False
     d["ON_TOUR_ALLOWED"] = False
+    d["SET_BREAKS"] = True
     d["PULSEAUDIO_ENABLE"] = False
     if os_version > 10:
         d["PULSEAUDIO_ENABLE"] = True
@@ -166,6 +167,7 @@ def load_options():
                     "ON_TOUR_ALLOWED",
                     "BLUETOOTH_ENABLE",
                     "UPDATE_ARCHIVE_ON_STARTUP",
+                    "SET_BREAKS",
                 ]:  # make booleans.
                     tmpd[k] = tmpd[k].lower() == "true"
                     logger.debug(f"Booleans k is {k}")

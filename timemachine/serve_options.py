@@ -92,6 +92,7 @@ def default_options():
     d["UPDATE_ARCHIVE_ON_STARTUP"] = "false"
     d["ON_TOUR_ALLOWED"] = "false"
     d["PLAY_LOSSLESS"] = "false"
+    d["SET_BREAKS"] = "true"
     d["PULSEAUDIO_ENABLE"] = "false"
     if get_os_version() > 10:
         d["PULSEAUDIO_ENABLE"] = "true"
