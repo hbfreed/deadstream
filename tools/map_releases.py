@@ -23,6 +23,7 @@ Low-confidence assignments are listed in <out>/report.txt. Fix them in an overri
     dates = ["1970-02-02", "1969-12-20"]     # the candidate dates, replacing the ones found automatically
     tracks = { 23 = "1969-12-20" }           # track number (in release order, from 1) -> date
     skip = false                             # true leaves the release out
+    reviewed = true                          # checked by hand: don't flag it in the report
 
 Usage:
     python tools/map_releases.py --out /path/to/timemachine-releases "/path/to/Music/Grateful Dead"
@@ -49,7 +50,7 @@ AUDIO_EXTENSIONS = (".flac", ".mp3", ".m4a", ".ogg", ".shn", ".wav")
 LOSSLESS_EXTENSIONS = (".flac", ".shn", ".wav")
 TEXT_EXTENSIONS = (".txt", ".nfo", ".cue", ".md5", ".ffp", ".log")
 SKIP_DIRS = re.compile(r"^(scans?|artwork|covers?|images?|art)$", re.IGNORECASE)
-DISC_MARK = re.compile(r"(?:^|[\s(\[_-])(cd|dis[ck])\s*[-_]?\s*(\d+)\s*[)\]]?\s*$", re.IGNORECASE)
+DISC_MARK = re.compile(r"(?:^|[\s(\[_-])(cd|dis[ck])\s*[-_]?\s*(\d+)\s*[)\]]?\s*(?:\([^)]*\))?\s*$", re.IGNORECASE)
 COLLECTION = "GratefulDead"
 # A release plays first on a date (before the archive.org tapes) if it holds this many minutes of that night, this
 # much of the setlist, or a whole set. Less than that is usually filler from another night on a bonus disc.
@@ -205,11 +206,12 @@ def find_releases(roots, cache):
                     groups.setdefault(base, []).append(d)
             joined = set()
             own = [dirpath] if any(f.lower().endswith(AUDIO_EXTENSIONS) for f in filenames) else []
+            only_discs = not own and len(groups) == 1  # the folder holds nothing but one release's discs
             for base, ds in groups.items():
-                if base == "" or len(ds) > 1:  # "CD1"/"CD2" belong to this folder; named siblings form a release
+                if base == "" or only_discs or len(ds) > 1:  # discs of this folder; or named siblings form a release
                     joined.update(ds)
                     folders = [os.path.join(dirpath, d) for d in ds]
-                    if base == "":
+                    if base == "" or only_discs:
                         own += folders
                     else:
                         units.append((os.path.join(dirpath, base), base, folders, context))
@@ -657,8 +659,9 @@ def coverage(date, assignment, setlist):
 
 
 class Mapping:
-    def __init__(self, release, dates, assignment, setlists, prior=None):
+    def __init__(self, release, dates, assignment, setlists, prior=None, reviewed=False):
         self.release = release
+        self.reviewed = reviewed
         self.prior = prior  # per-track dates from a track listing
         self.dates = dates  # candidate dates
         self.assignment = assignment  # per track: (date, setlist index, similarity)
@@ -684,6 +687,8 @@ class Mapping:
 
     def problems(self):
         """Reasons to look at this mapping by hand"""
+        if self.reviewed:
+            return []
         out = []
         if not self.dates:
             out.append("no show dates found for this release")
@@ -727,7 +732,7 @@ def map_release(release, setlists, overrides):
                 sls = {d: sls2[d] for d in sls2 if d in used or d in dates}
                 dates = dates + [d for d in nearby if d in used]
                 assignment = assignment2
-    return Mapping(release, dates, assignment, sls, prior)
+    return Mapping(release, dates, assignment, sls, prior, reviewed=override.get("reviewed", False))
 
 
 def longest_run(assignment, date):
