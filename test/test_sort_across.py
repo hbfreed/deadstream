@@ -3,7 +3,7 @@ from types import SimpleNamespace
 from timemachine import Archivary
 
 
-def tape(collection, name, tier=1):
+def tape(collection, name, tier=2):
     return SimpleNamespace(collection=collection, name=name, source_tier=lambda: tier)
 
 

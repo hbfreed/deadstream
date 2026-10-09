@@ -19,6 +19,7 @@ import abc
 import csv
 import datetime
 import difflib
+import importlib
 import json
 import logging
 import math
@@ -164,6 +165,23 @@ def remove_none(lis):
     return [a for a in lis if a is not None]
 
 
+def plugin_collections(collection_list):
+    """Collections served by optional archive modules: "Name_X" is served by timemachine.archive_name if that
+    module exists (and has make_archive(collections, dbpath)). Returns {module: [collections]}"""
+    plugins = {}
+    for c in collection_list:
+        m = re.match(r"^([A-Za-z]+)_", c)
+        if not m or m.group(1) in ("Local", "Plex"):
+            continue
+        try:
+            module = importlib.import_module(f"timemachine.archive_{m.group(1).lower()}")
+        except ImportError:
+            continue
+        if hasattr(module, "make_archive"):
+            plugins.setdefault(module, []).append(c)
+    return plugins
+
+
 def parse_plex_collection_name(collection_name):
     if not isinstance(collection_name, str) or not collection_name.startswith("Plex_"):
         return (None, None)
@@ -260,8 +278,11 @@ class Archivary:
         ia_archive = None
         local_archive = None
         plex_archives = []
+        plugins = plugin_collections(self.collection_list)  # {module: [collections]}
+        plugged = [x for xs in plugins.values() for x in xs]
         ia_collections = [
-            x for x in self.collection_list if ((x != "Phish") and (not x.startswith("Local_")) and (not x.startswith("Plex_")))
+            x for x in self.collection_list
+            if ((x != "Phish") and (not x.startswith("Local_")) and (not x.startswith("Plex_")) and (x not in plugged))
         ]
         local_collections = [x for x in self.collection_list if x.startswith("Local_")]
         plex_collections = [x for x in self.collection_list if x.startswith("Plex_")]
@@ -321,7 +342,16 @@ class Archivary:
 
         if (ia_archive is not None) and len(ia_archive.dates) == 0:  # eg, if the only collection doesn't exist
             ia_archive = None
-        self.archives = remove_none([ia_archive, phishin_archive, local_archive] + plex_archives)
+        plugin_archives = []
+        for module, collections in plugins.items():
+            try:
+                plugin_archive = module.make_archive(collections, dbpath=dbpath)
+                if plugin_archive is not None and len(plugin_archive.dates) > 0:
+                    plugin_archives.append(plugin_archive)
+            except Exception as e:  # a source that is down or misconfigured must not stop the others
+                logger.error(f"Unable to initialize archive for {collections}: {e}")
+
+        self.archives = remove_none([ia_archive, phishin_archive, local_archive] + plex_archives + plugin_archives)
         if len(self.archives) == 0:
             logger.warning(f"All archives for collections {collection_list} are empty -- check the system!")
             self.tape_dates = {}
@@ -646,8 +676,9 @@ class BaseTape(abc.ABC):
         return None
 
     def source_tier(self):
-        """Where the tape sorts among the tapes of a date: 0 first, 1 archive.org and other sources, 2 last"""
-        return 1
+        """Where the tape sorts among the tapes of a date: 0 local tapes, 1 plugin sources (eg streaming services),
+        2 archive.org and other sources, 3 local filler"""
+        return 2
 
 
 class BaseTrack:
@@ -1373,7 +1404,7 @@ class LocalTape(BaseTape):
         # Local tapes come first, except an official release holding only a little of the show (eg filler on a
         # bonus disc), which comes after the archive.org tapes.
         if self.release is not None and not self.release.get("primary", True):
-            return 2
+            return 3
         return 0
 
     def compute_score(self):
