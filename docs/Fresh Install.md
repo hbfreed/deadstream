@@ -11,38 +11,63 @@ been run on hardware yet.
 
 In Raspberry Pi Imager, choose **Raspberry Pi OS Lite (64-bit)** and set these in the OS customisation settings:
 
-- hostname: anything (it no longer matters, because the update service is masked in step 6)
+- hostname: anything (it no longer matters, because the update service is masked in step 7)
 - username **`deadhead`** (the service files hardcode `/home/deadhead`)
 - Wi-Fi SSID and password, and your Wi-Fi country
 - enable SSH with your public key
 
-The user Imager creates has passwordless sudo, which the Time Machine relies on.
+Flash with Imager 2.x. Balena Etcher and older Imager versions don't apply these settings to trixie
+images, and the Pi then boots with no user and no Wi-Fi.
 
-## 2. System packages and settings
+## 2. Passwordless sudo
+
+The Time Machine calls `sudo` without a prompt (to restart services, shut down, scan local archives).
+On trixie, the user Imager creates needs a password for sudo, so this has to be run once from a
+terminal where you can type that password:
+
+```bash
+ssh -t deadhead@timemachine.local 'echo "deadhead ALL=(ALL) NOPASSWD: ALL" | sudo tee /etc/sudoers.d/010_deadhead-nopasswd && sudo chmod 440 /etc/sudoers.d/010_deadhead-nopasswd && sudo visudo -c'
+```
+
+## 3. System packages and settings
 
 ```bash
 sudo apt update && sudo apt full-upgrade -y
-sudo apt install -y git rsync libmpv2 python3-dev build-essential \
-    pulseaudio pulseaudio-utils wireless-tools net-tools
+sudo apt install -y --no-install-recommends git rsync libmpv2 python3-dev build-essential \
+    swig liblgpio-dev pulseaudio pulseaudio-utils wireless-tools net-tools
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
 sudo raspi-config nonint do_spi 0          # the ST7735 screen is on SPI
 ```
 
+The screen code drives SPI chip-select CE0 (GPIO 8) itself, but the kernel SPI driver claims CE0 and CE1,
+and lgpio refuses pins that are already claimed ("GPIO busy"). Load SPI without kernel chip-selects
+by adding this to `/boot/firmware/config.txt`, after `dtparam=spi=on`, on a line of its own (a comment on
+the same line makes the firmware ignore it):
+
+```
+dtoverlay=spi0-0cs
+```
+
 `wireless-tools` and `net-tools` provide `iwconfig`, `iwlist` and `ifconfig`, which
-`connect_network` calls. `python3-dev` and `build-essential` are needed to build `RPi.GPIO`,
-which has no aarch64 wheel.
+`connect_network` calls. `python3-dev`, `build-essential`, `swig` and `liblgpio-dev` are needed to build `lgpio`, which has no
+aarch64 wheel for python 3.13. (`RPi.GPIO` is replaced by `rpi-lgpio`, because RPi.GPIO's edge detection
+doesn't work on bookworm and later kernels.)
 
 Check `/boot/firmware/config.txt`:
 
 - `dtparam=audio=on` must be there for the 3.5 mm jack.
 - I2C must stay **off**, because the Stop and Rewind buttons use GPIO 2 and 3.
-- **v2 boards** have a power button and need `dtoverlay=gpio-shutdown` (copy that line from the old card's
+- **v2 boards** (including v2.1) have a power button and need `dtoverlay=gpio-shutdown` (copy that line from the old card's
   `/boot/config.txt` if it had one). `board_version.sh` reads this line to tell the board versions apart, and on
   a v2 board it moves Rewind to GPIO 21.
 - Add `enable_uart=1`, as upstream's update script did.
+- Give the memory back from the GPU. Nothing uses HDMI or a camera, because the screen is driven
+  over SPI. By default, 64 MB goes to the GPU firmware and the KMS driver reserves a 256 MB CMA pool
+  out of the roughly 415 MB Linux sees. Comment out `dtoverlay=vc4-kms-v3d`, `max_framebuffers=2`,
+  `camera_auto_detect=1` and `display_auto_detect=1`, and add `gpu_mem=16`.
 
-## 3. PulseAudio in system mode
+## 4. PulseAudio in system mode
 
 The player outputs to `pulse` and restarts the system-wide daemon itself. The upstream update
 script used to do this setup. On a fresh card it has to be done by hand:
@@ -58,7 +83,7 @@ echo "SystemMaxUse=200M" | sudo tee -a /etc/systemd/journald.conf
 systemctl --user mask pulseaudio.service pulseaudio.socket
 ```
 
-## 4. Wi-Fi workaround
+## 5. Wi-Fi workaround
 
 Wi-Fi is managed by NetworkManager, which is set up from Imager. `connect_network` assumes Wi-Fi
 is down if `/etc/wpa_supplicant/wpa_supplicant.conf` doesn't exist, and then starts the
@@ -70,7 +95,7 @@ sudo mkdir -p /etc/wpa_supplicant && sudo touch /etc/wpa_supplicant/wpa_supplica
 
 (Changing Wi-Fi with the knobs won't work on this OS. Use `sudo nmtui` over SSH.)
 
-## 5. Install the code
+## 6. Install the code
 
 From the laptop, in the repo:
 
@@ -94,11 +119,12 @@ The old env stays around for rolling back. Note that the downloaded tape index l
 (`lib/python3.13/site-packages/timemachine/metadata/*_ids`). Copy those folders across, or the new env
 downloads them again on first start (about 10 seconds for the Dead).
 
-## 6. Services
+## 7. Services
 
 ```bash
 ~/timemachine/bin/services.sh                  # installs and enables calibrate, connect_network,
                                                # timemachine, serve_options, pulseaudio
+sudo rm /etc/systemd/system/update.service     # services.sh copies it in, and a unit file blocks masking
 sudo systemctl mask update.service             # never pull upstream over this install
 sudo reboot
 ```
@@ -106,7 +132,7 @@ sudo reboot
 With `update.service` masked, the three "Update code" triggers (holding Stop, the month-button
 menu, and the web page) fail harmlessly. The screen shows "Code is up to Date".
 
-## 7. Check
+## 8. Check
 
 - The screen lights up and the knobs move the date.
 - Dialling 12/19/73 and pressing Play plays the show through the 3.5 mm jack.
