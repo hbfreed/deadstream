@@ -509,8 +509,6 @@ class Setlists:
                 titled = [t for t in tracks if not re.match(r"^(track|untitled|unknown)\b", t, re.IGNORECASE)]
                 if len(titled) >= 0.7 * max(1, len(tracks)) and len(titled) > len(songs):
                     songs = titled
-                if len(songs) >= 8:
-                    break
         info = self.set_data.get_date(COLLECTION, date)
         venue = ["", ""]
         if info is not None:
