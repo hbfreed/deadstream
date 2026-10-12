@@ -290,7 +290,7 @@ def main():
         ip = utils.get_ip()
         connected = ip is not None
         if not connected:
-            connected = wifi_connected(max_attempts=4)
+            connected = wifi_connected(max_attempts=12)  # about 2 minutes: Wi-Fi can be slow at boot; any button skips
 
         if os.path.exists(parms.wpa_path): # We have connected at least once?
             if utils.get_local_mode() >= 2:

@@ -188,7 +188,10 @@ def get_local_mode():
         if local_mode > 0:  # Are there any Local_ collections?
             config.load_options()
             opts_dict = config.optd
-            for coll in opts_dict["COLLECTIONS"].split(","):
+            collections = opts_dict["COLLECTIONS"]  # a list once load_options has parsed it
+            if isinstance(collections, str):
+                collections = collections.split(",")
+            for coll in collections:
                 if "Local_" in coll:
                     local_mode = 2
         if local_mode == 2:  # Are we disconnected from wifi?
